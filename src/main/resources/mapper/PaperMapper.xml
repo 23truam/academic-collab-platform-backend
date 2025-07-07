@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.academic_collab_platform_backend.mapper.PaperMapper">
+
+    <select id="selectBatchIds" parameterType="list" resultType="com.example.academic_collab_platform_backend.model.Paper">
+        SELECT id, title, abstract_text, url, year
+        FROM papers
+        WHERE id IN
+        <foreach item="id" index="index" collection="coll"
+                 open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper> 

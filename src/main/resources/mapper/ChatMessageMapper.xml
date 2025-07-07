@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.academic_collab_platform_backend.mapper.ChatMessageMapper">
+
+    <select id="getChatHistory" resultType="com.example.academic_collab_platform_backend.model.ChatMessage">
+        SELECT * FROM chat_messages 
+        WHERE (sender_id = #{user1Id} AND receiver_id = #{user2Id}) 
+           OR (sender_id = #{user2Id} AND receiver_id = #{user1Id})
+        ORDER BY create_time DESC 
+        LIMIT #{limit}
+    </select>
+
+    <select id="getUnreadMessageCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM chat_messages 
+        WHERE receiver_id = #{userId} AND is_read = FALSE
+    </select>
+
+    <update id="markMessagesAsRead">
+        UPDATE chat_messages 
+        SET is_read = TRUE 
+        WHERE sender_id = #{senderId} AND receiver_id = #{receiverId} AND is_read = FALSE
+    </update>
+
+</mapper> 

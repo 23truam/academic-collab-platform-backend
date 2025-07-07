@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.academic_collab_platform_backend.mapper.UserMapper">
+
+    <select id="selectByEmail" resultType="com.example.academic_collab_platform_backend.model.User">
+        SELECT * FROM users WHERE email = #{email} LIMIT 1
+    </select>
+
+    <select id="selectAllUsersWithStatus" resultType="com.example.academic_collab_platform_backend.dto.UserWithStatusDTO">
+        SELECT u.id, u.username, u.email, s.is_online
+        FROM users u
+        LEFT JOIN user_online_status s ON u.id = s.user_id
+    </select>
+
+</mapper> 
