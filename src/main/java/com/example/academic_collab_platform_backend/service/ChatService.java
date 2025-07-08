@@ -2,6 +2,7 @@ package com.example.academic_collab_platform_backend.service;
 
 import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
 import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
+import com.example.academic_collab_platform_backend.dto.UserListDTO;
 import com.example.academic_collab_platform_backend.model.ChatMessage;
 
 import java.util.List;
@@ -21,7 +22,7 @@ public interface ChatService {
     /**
      * 获取用户列表（用于聊天）
      */
-    List<ChatMessageResponse> getUserList(Long currentUserId);
+    List<UserListDTO> getUserList(Long currentUserId);
     
     /**
      * 标记消息为已读

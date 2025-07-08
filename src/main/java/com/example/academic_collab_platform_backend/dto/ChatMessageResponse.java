@@ -1,8 +1,10 @@
 package com.example.academic_collab_platform_backend.dto;
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+
 
 @Data
 public class ChatMessageResponse {

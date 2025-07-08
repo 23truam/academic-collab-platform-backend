@@ -1,6 +1,7 @@
 package com.example.academic_collab_platform_backend.service;
 
 import com.example.academic_collab_platform_backend.model.CollaborationResult;
+import com.example.academic_collab_platform_backend.dto.CollaborationPredictResponse;
 
 import java.util.List;
 
@@ -24,7 +25,7 @@ public interface CollaborationService {
      * @param minPapers 最少合作论文数
      * @param startYear 可选，起始年份
      * @param endYear 可选，结束年份
-     * @return 预测的合作作者姓名列表
+     * @return 预测的合作作者详细列表
      */
-    List<String> predictCollaborators(Long authorId, List<String> directions, Integer minPapers, Integer startYear, Integer endYear);
+    List<CollaborationPredictResponse> predictCollaborators(Long authorId, List<String> directions, Integer minPapers, Integer startYear, Integer endYear);
 } 

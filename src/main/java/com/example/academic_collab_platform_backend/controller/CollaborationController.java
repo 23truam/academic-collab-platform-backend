@@ -2,6 +2,8 @@ package com.example.academic_collab_platform_backend.controller;
 
 import com.example.academic_collab_platform_backend.model.CollaborationResult;
 import com.example.academic_collab_platform_backend.service.CollaborationService;
+import com.example.academic_collab_platform_backend.dto.CollaborationPredictRequest;
+import com.example.academic_collab_platform_backend.dto.CollaborationPredictResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,16 +39,17 @@ public class CollaborationController {
 
     /**
      * 预测指定作者的潜在合作对象
-     * @param params 请求参数（authorId, directions, minPapers, startYear, endYear）
-     * @return 预测的合作作者姓名列表
+     * @param request 请求参数（authorId, directions, minPapers, startYear, endYear）
+     * @return 预测的合作作者详细列表
      */
     @PostMapping("/predict")
-    public List<String> predict(@RequestBody Map<String, Object> params) {
-        Long authorId = Long.valueOf(params.get("authorId").toString());
-        List<String> directions = (List<String>) params.get("directions");
-        Integer minPapers = params.get("minPapers") != null ? (Integer) params.get("minPapers") : null;
-        Integer startYear = params.get("startYear") != null ? (Integer) params.get("startYear") : null;
-        Integer endYear = params.get("endYear") != null ? (Integer) params.get("endYear") : null;
-        return collaborationService.predictCollaborators(authorId, directions, minPapers, startYear, endYear);
+    public List<CollaborationPredictResponse> predict(@RequestBody CollaborationPredictRequest request) {
+        return collaborationService.predictCollaborators(
+            request.getAuthorId(),
+            request.getDirections(),
+            request.getMinPapers(),
+            request.getStartYear(),
+            request.getEndYear()
+        );
     }
 } 

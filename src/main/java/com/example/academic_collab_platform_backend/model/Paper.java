@@ -32,14 +32,6 @@ public class Paper {
         this.title = title;
     }
 
-    public String getAuthors() {
-        return authors;
-    }
-
-    public void setAuthors(String authors) {
-        this.authors = authors;
-    }
-
     public String getAbstractText() {
         return abstractText;
     }
@@ -66,34 +58,14 @@ public class Paper {
 
     private String title;
 
-    // 数据库中存储的authors字符串
-    @JsonIgnore
-    private String authors;
-
     private String abstractText;
 
     private String url;
 
     private Integer year;
 
-    // 前端期望的authors数组
+    // 前端期望的authors数组（虚拟字段，不映射数据库）
     @TableField(exist = false)
     private List<String> authorsList;
-
-    // 获取authors数组
-    public List<String> getAuthorsList() {
-        if (authorsList == null && authors != null) {
-            authorsList = Arrays.asList(authors.split(","));
-        }
-        return authorsList;
-    }
-
-    // 设置authors数组
-    public void setAuthorsList(List<String> authorsList) {
-        this.authorsList = authorsList;
-        if (authorsList != null) {
-            this.authors = String.join(",", authorsList);
-        }
-    }
 }
 

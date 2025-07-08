@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.example.academic_collab_platform_backend.model.Author;
 import com.example.academic_collab_platform_backend.dto.AuthorDetailResponse;
 import com.example.academic_collab_platform_backend.service.AuthorService;
+import com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl;
 import com.example.academic_collab_platform_backend.util.ResponseUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -145,9 +146,8 @@ public class AuthorController {
     public ResponseEntity<Map<String, Object>> initAuthorCache() {
         try {
             // 强制重新加载缓存
-            if (authorService instanceof com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl) {
-                com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl authorServiceImpl =
-                    (com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl) authorService;
+            if (authorService instanceof AuthorServiceImpl) {
+                AuthorServiceImpl authorServiceImpl = (AuthorServiceImpl) authorService;
                 authorServiceImpl.clearAuthorCache();
                 // 触发缓存加载
                 authorService.getAuthorStatistics();
@@ -167,9 +167,8 @@ public class AuthorController {
     @GetMapping("/cache-status")
     public ResponseEntity<Map<String, Object>> getCacheStatus() {
         try {
-            if (authorService instanceof com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl) {
-                com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl authorServiceImpl =
-                    (com.example.academic_collab_platform_backend.service.impl.AuthorServiceImpl) authorService;
+            if (authorService instanceof AuthorServiceImpl) {
+                AuthorServiceImpl authorServiceImpl = (AuthorServiceImpl) authorService;
                 // 测试缓存是否正常工作
                 long startTime = System.currentTimeMillis();
                 authorService.getAuthorStatistics();

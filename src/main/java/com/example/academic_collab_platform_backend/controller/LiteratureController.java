@@ -10,7 +10,6 @@ import java.util.List;
 
 /**
  * 文献检索接口控制器，负责处理文献的关键词检索请求。
- * 仅做参数接收和响应封装，具体业务由LiteratureService实现。
  */
 @RestController
 @RequestMapping("/api/literature")

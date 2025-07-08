@@ -1,8 +1,10 @@
 package com.example.academic_collab_platform_backend.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
 import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
+import com.example.academic_collab_platform_backend.dto.UserListDTO;
 import com.example.academic_collab_platform_backend.mapper.ChatMessageMapper;
 import com.example.academic_collab_platform_backend.mapper.UserMapper;
 import com.example.academic_collab_platform_backend.mapper.UserOnlineStatusMapper;
@@ -35,14 +37,14 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public ChatMessageResponse sendMessage(Long senderId, ChatMessageRequest request) {
-        ChatMessage message = new ChatMessage();
-        message.setSenderId(senderId);
-        message.setReceiverId(request.getReceiverId());
-        message.setContent(request.getContent());
-        message.setMessageType(request.getMessageType() != null ? request.getMessageType() : "TEXT");
-        message.setIsRead(false);
-        message.setCreateTime(LocalDateTime.now());
-        message.setUpdateTime(LocalDateTime.now());
+        ChatMessage message = ChatMessage.builder()
+                .senderId(senderId)
+                .receiverId(request.getReceiverId())
+                .content(request.getContent())
+                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
+                .isRead(false)
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now()).build();
 
         chatMessageMapper.insert(message);
 
@@ -58,7 +60,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public List<ChatMessageResponse> getUserList(Long currentUserId) {
+    public List<UserListDTO> getUserList(Long currentUserId) {
         // 获取所有用户（除了当前用户）
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         wrapper.ne("id", currentUserId);
@@ -66,15 +68,13 @@ public class ChatServiceImpl implements ChatService {
 
         return users.stream()
                 .map(user -> {
-                    ChatMessageResponse response = new ChatMessageResponse();
-                    response.setSenderId(user.getId());
-                    response.setSenderName(user.getUsername());
-                    response.setReceiverId(currentUserId);
-                    response.setReceiverName(user.getUsername());
-                    return response;
+                    UserOnlineStatus status = userOnlineStatusMapper.selectById(user.getId());
+                    boolean isOnline = status != null && Boolean.TRUE.equals(status.getIsOnline());
+                    return new UserListDTO(user.getId(), user.getUsername(), isOnline);
                 })
                 .collect(Collectors.toList());
     }
+
 
     @Override
     public void markMessagesAsRead(Long senderId, Long receiverId) {
@@ -110,7 +110,7 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    private ChatMessageResponse convertToResponse(ChatMessage message) {
+    private ChatMessageResponse  convertToResponse(ChatMessage message) {
         ChatMessageResponse response = new ChatMessageResponse();
         response.setId(message.getId());
         response.setSenderId(message.getSenderId());

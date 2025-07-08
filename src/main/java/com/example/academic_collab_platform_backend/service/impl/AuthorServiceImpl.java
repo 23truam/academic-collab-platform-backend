@@ -9,7 +9,9 @@ import com.example.academic_collab_platform_backend.model.Author;
 import com.example.academic_collab_platform_backend.model.PaperAuthor;
 import com.example.academic_collab_platform_backend.service.AuthorService;
 import com.example.academic_collab_platform_backend.util.RedisUtil;
+import org.hibernate.validator.internal.constraintvalidators.bv.size.SizeValidatorForArraysOfLong;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.cache.CacheProperties;
 import org.springframework.stereotype.Service;
 import com.example.academic_collab_platform_backend.dto.AuthorDetailResponse;
 import com.example.academic_collab_platform_backend.model.Paper;
@@ -46,6 +48,7 @@ public class AuthorServiceImpl implements AuthorService {
     private static final String AUTHOR_BY_ID_CACHE_KEY_PREFIX = "author:";
     private static final String AUTHOR_BY_NAME_CACHE_KEY_PREFIX = "author_name:";
     private static final long CACHE_EXPIRE_TIME = 24; // 缓存过期时间（小时）
+    private SizeValidatorForArraysOfLong sizeValidatorForArraysOfLong;
 
     /**
      * 从Redis缓存获取所有作者
@@ -67,16 +70,14 @@ public class AuthorServiceImpl implements AuthorService {
      * 将所有作者加载到Redis缓存
      */
     private void loadAllAuthorsToCache() {
-        List<Author> allAuthors = authorMapper.selectList(null);
-        if (allAuthors != null && !allAuthors.isEmpty()) {
-            redisUtil.setObject(ALL_AUTHORS_CACHE_KEY, allAuthors, CACHE_EXPIRE_TIME, TimeUnit.HOURS);
-            
-            // 同时缓存每个作者的详细信息
-            for (Author author : allAuthors) {
-                String authorByIdKey = AUTHOR_BY_ID_CACHE_KEY_PREFIX + author.getId();
-                String authorByNameKey = AUTHOR_BY_NAME_CACHE_KEY_PREFIX + author.getName();
-                redisUtil.setObject(authorByIdKey, author, CACHE_EXPIRE_TIME, TimeUnit.HOURS);
-                redisUtil.setObject(authorByNameKey, author, CACHE_EXPIRE_TIME, TimeUnit.HOURS);
+        List<Author> allAuthors=authorMapper.selectList(null);
+        if(allAuthors!=null && !allAuthors.isEmpty()){
+            redisUtil.setObject(ALL_AUTHORS_CACHE_KEY,allAuthors,CACHE_EXPIRE_TIME,TimeUnit.HOURS);
+            for(Author author:allAuthors){
+                String authorByIdKey=AUTHOR_BY_ID_CACHE_KEY_PREFIX+author.getId();
+                String authorByNameKey=AUTHOR_BY_NAME_CACHE_KEY_PREFIX+author.getName();
+                redisUtil.setObject(authorByIdKey,author,CACHE_EXPIRE_TIME,TimeUnit.HOURS);
+                redisUtil.setObject(authorByNameKey,author,CACHE_EXPIRE_TIME,TimeUnit.HOURS);
             }
         }
     }
@@ -84,17 +85,15 @@ public class AuthorServiceImpl implements AuthorService {
     /**
      * 获取所有作者（优先从缓存获取）
      */
-    private List<Author> getAllAuthors() {
-        // 首先尝试从缓存获取
-        List<Author> cachedAuthors = getAllAuthorsFromCache();
-        if (cachedAuthors != null && !cachedAuthors.isEmpty()) {
-            return cachedAuthors;
+    private List<Author> getAllAuthors(){
+        List<Author> cacheAuthor=getAllAuthorsFromCache();
+        if(cacheAuthor!=null && !cacheAuthor.isEmpty()){
+            return cacheAuthor;
         }
-        
-        // 缓存中没有数据，从数据库加载并缓存
         loadAllAuthorsToCache();
         return getAllAuthorsFromCache();
     }
+
 
     /**
      * 分页搜索作者，根据关键词模糊匹配作者名。
@@ -127,6 +126,7 @@ public class AuthorServiceImpl implements AuthorService {
         
         return resultPage;
     }
+
 
     /**
      * 根据论文ID获取作者列表。
