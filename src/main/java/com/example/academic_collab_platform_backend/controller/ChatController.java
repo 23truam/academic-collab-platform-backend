@@ -52,12 +52,16 @@ public class ChatController {
      * 获取聊天历史
      */
     @GetMapping("/history/{userId}")
-    public ResponseEntity<?> getChatHistory(@PathVariable Long userId, @RequestParam(defaultValue = "50") Integer limit, HttpServletRequest httpRequest, MultipartRequest multipartRequest){
-        try{
-            Long currentUserId=getCurrentUserId(httpRequest);
-            List<ChatMessageResponse> messages=chatService.getChatHistory(currentUserId,userId,limit);
+    public ResponseEntity<?> getChatHistory(
+        @PathVariable Long userId,
+        @RequestParam(defaultValue = "50") Integer limit,
+        HttpServletRequest httpRequest
+    ) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            List<ChatMessageResponse> messages = chatService.getChatHistory(currentUserId, userId, limit);
             return ResponseEntity.ok(ResponseUtil.success(messages));
-        }catch(Exception e){
+        } catch(Exception e) {
             return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
         }
     }
@@ -101,6 +105,20 @@ public class ChatController {
             Long currentUserId = getCurrentUserId(httpRequest);
             Integer count = chatService.getUnreadMessageCount(currentUserId);
             return ResponseEntity.ok(ResponseUtil.success(count));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * 获取每个用户的未读消息数map
+     */
+    @GetMapping("/unread-map")
+    public ResponseEntity<?> getUnreadMap(HttpServletRequest httpRequest) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            Map<Long, Integer> unreadMap = chatService.getUnreadCountMap(currentUserId);
+            return ResponseEntity.ok(ResponseUtil.success(unreadMap));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
         }

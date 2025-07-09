@@ -15,7 +15,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    @Override
+/*    @Override
     public void handleUserConnect(Long userId, String sessionId) {
         chatService.updateUserOnlineStatus(userId, true, sessionId);
     }
@@ -34,5 +34,22 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
             response
         );
         return response;
+    }*/
+
+    public void handleUserConnect(Long userId,String sessionId){
+        chatService.updateUserOnlineStatus(userId,true,sessionId);
+    }
+
+    public void handleUserDisconnect(Long userId) {
+        chatService.updateUserOnlineStatus(userId, false, null);
+    }
+
+    public ChatMessageResponse handleSendMessage(Long senderId, ChatMessageRequest request) {
+         ChatMessageResponse response=chatService.sendMessage(senderId,request);
+         messagingTemplate.convertAndSendToUser(
+                 request.getReceiverId().toString().toString(),
+                 "/queue/messages",
+                 response);
+         return response;
     }
 } 

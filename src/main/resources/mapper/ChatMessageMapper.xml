@@ -15,6 +15,13 @@
         WHERE receiver_id = #{userId} AND is_read = FALSE
     </select>
 
+    <select id="getUnreadCountMap" resultType="java.util.HashMap">
+        SELECT sender_id, COUNT(*) as cnt
+        FROM chat_messages
+        WHERE receiver_id = #{currentUserId} AND is_read = FALSE
+        GROUP BY sender_id
+    </select>
+
     <update id="markMessagesAsRead">
         UPDATE chat_messages 
         SET is_read = TRUE 

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
@@ -27,4 +28,6 @@ public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
      */
     void markMessagesAsRead(@Param("senderId") Long senderId, 
                            @Param("receiverId") Long receiverId);
+
+    List<Map<String, Object>> getUnreadCountMap(Long currentUserId);
 } 

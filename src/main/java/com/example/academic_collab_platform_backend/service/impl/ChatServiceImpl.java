@@ -16,8 +16,10 @@ import com.example.academic_collab_platform_backend.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.swing.text.StyledEditorKit;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -87,6 +89,18 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public Map<Long, Integer> getUnreadCountMap(Long currentUserId) {
+        List<Map<String, Object>> list = chatMessageMapper.getUnreadCountMap(currentUserId);
+        Map<Long, Integer> result = new java.util.HashMap<>();
+        for (Map<String, Object> row : list) {
+            Long senderId = ((Number) row.get("sender_id")).longValue();
+            Integer count = ((Number) row.get("cnt")).intValue();
+            result.put(senderId, count);
+        }
+        return result;
+    }
+
+    @Override
     public void updateUserOnlineStatus(Long userId, Boolean isOnline, String sessionId) {
         UserOnlineStatus status = userOnlineStatusMapper.selectById(userId);
         if (status == null) {
@@ -109,6 +123,7 @@ public class ChatServiceImpl implements ChatService {
             userOnlineStatusMapper.updateLastLogoutTime(userId);
         }
     }
+
 
     private ChatMessageResponse  convertToResponse(ChatMessage message) {
         ChatMessageResponse response = new ChatMessageResponse();

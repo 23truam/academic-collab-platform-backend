@@ -111,7 +111,6 @@ public class AuthServiceImpl implements AuthService {
             if (token != null && token.startsWith("Bearer ")) {
                 token = token.substring(7);
             }
-            
             String userId = jwtUtil.extractUserId(token);
             if (userId != null) {
                 // 修改用户在线状态为false

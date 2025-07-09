@@ -6,6 +6,7 @@ import com.example.academic_collab_platform_backend.dto.UserListDTO;
 import com.example.academic_collab_platform_backend.model.ChatMessage;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ChatService {
     
@@ -33,6 +34,11 @@ public interface ChatService {
      * 获取未读消息数
      */
     Integer getUnreadMessageCount(Long userId);
+    
+    /**
+     * 获取未读消息数（按用户分组）
+     */
+    Map<Long, Integer> getUnreadCountMap(Long currentUserId);
     
     /**
      * 更新用户在线状态

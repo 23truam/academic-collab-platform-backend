@@ -33,11 +33,10 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             .and()
             .authorizeRequests()
-            .antMatchers("/api/auth/**").permitAll()
+            .antMatchers("/", "/index.html").permitAll()
             .antMatchers("/api/user/register", "/api/user/login").permitAll()
-            .antMatchers("/api/authors/**").permitAll()
-            .antMatchers("/api/collaboration/**").permitAll()
-            .antMatchers("/ws/**").permitAll()
+            .antMatchers("/api/auth/**").permitAll()
+            .antMatchers("/ws/**").permitAll() // 放行WebSocket端点
             .anyRequest().authenticated();
         http.addFilterBefore(new JwtAuthenticationFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class);
     }
