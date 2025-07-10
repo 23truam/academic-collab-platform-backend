@@ -46,3 +46,6 @@ jwt:
 
 server:
   port: 8080
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false

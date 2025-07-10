@@ -38,6 +38,7 @@ public class HeartbeatServiceImpl implements HeartbeatService {
         }
     }
 
+
     @Override
     public ResponseEntity<?> checkOnlineStatus(String email) {
         try {
@@ -48,6 +49,7 @@ public class HeartbeatServiceImpl implements HeartbeatService {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Check status failed: " + e.getMessage());
         }
     }
+
 
     @Override
     public ResponseEntity<?> getOnlineUsers() {

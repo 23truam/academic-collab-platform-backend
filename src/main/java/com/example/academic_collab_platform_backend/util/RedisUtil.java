@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 /**
  * Redis工具类，提供高并发支持
@@ -20,6 +22,12 @@ public class RedisUtil {
     private RedisTemplate<String, String> redisTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public RedisUtil() {
+        // 注册 Java 8 时间模块
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
 
     /**
      * 获取ObjectMapper实例
@@ -201,5 +209,13 @@ public class RedisUtil {
      */
     public long decrement(String key, long delta) {
         return redisTemplate.opsForValue().decrement(key, delta);
+    }
+
+    /**
+     * 注册 ObjectMapper 支持 Java 8 时间模块
+     */
+    public void registerJavaTimeModule() {
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 } 

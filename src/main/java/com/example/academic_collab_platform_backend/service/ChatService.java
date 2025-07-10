@@ -16,9 +16,19 @@ public interface ChatService {
     ChatMessageResponse sendMessage(Long senderId, ChatMessageRequest request);
     
     /**
-     * 获取聊天历史
+     * 获取聊天历史（带缓存）
      */
     List<ChatMessageResponse> getChatHistory(Long user1Id, Long user2Id, Integer limit);
+    
+    /**
+     * 获取聊天历史（带缓存和登录时间标记）
+     */
+    Map<String, Object> getChatHistoryWithCache(Long user1Id, Long user2Id, Integer limit, Long loginTime);
+    
+    /**
+     * 清除聊天缓存
+     */
+    void clearChatCache(Long user1Id, Long user2Id);
     
     /**
      * 获取用户列表（用于聊天）

@@ -13,6 +13,7 @@ import com.example.academic_collab_platform_backend.model.User;
 import com.example.academic_collab_platform_backend.model.UserOnlineStatus;
 import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.service.UserService;
+import com.example.academic_collab_platform_backend.util.RedisUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +21,9 @@ import javax.swing.text.StyledEditorKit;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ChatServiceImpl implements ChatService {
@@ -37,6 +40,19 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private RedisUtil redisUtil;
+
+    // 缓存过期时间：1小时
+    private static final long CACHE_EXPIRE_HOURS = 1;
+
+    // 添加用户信息缓存
+    private final Map<Long, User> userCache = new ConcurrentHashMap<>();
+
+    private User getUserFromCache(Long userId) {
+        return userCache.computeIfAbsent(userId, id -> userMapper.selectById(id));
+    }
+
     @Override
     public ChatMessageResponse sendMessage(Long senderId, ChatMessageRequest request) {
         ChatMessage message = ChatMessage.builder()
@@ -50,6 +66,9 @@ public class ChatServiceImpl implements ChatService {
 
         chatMessageMapper.insert(message);
 
+        // 发送新消息后，清除相关缓存
+        clearChatCache(senderId, request.getReceiverId());
+
         return convertToResponse(message);
     }
 
@@ -59,6 +78,60 @@ public class ChatServiceImpl implements ChatService {
         return messages.stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<String, Object> getChatHistoryWithCache(Long user1Id, Long user2Id, Integer limit, Long loginTime) {
+        String cacheKey = generateChatCacheKey(user1Id, user2Id, limit);
+        String cachedJson = redisUtil.get(cacheKey);
+        List<ChatMessageResponse> cachedMessages = null;
+        if (cachedJson != null) {
+            try {
+                cachedMessages = redisUtil.getObjectMapper().readValue(cachedJson, 
+                    redisUtil.getObjectMapper().getTypeFactory().constructCollectionType(List.class, ChatMessageResponse.class));
+            } catch (Exception e) {
+                redisUtil.delete(cacheKey);
+            }
+        }
+
+        List<ChatMessage> allMessages = chatMessageMapper.getChatHistory(user1Id, user2Id, limit != null ? limit : 50);
+        List<ChatMessageResponse> allResponses = allMessages.stream().map(this::convertToResponse).collect(Collectors.toList());
+
+        // 按登录时间分为历史和新消息
+        List<ChatMessageResponse> historyMessages = new java.util.ArrayList<>();
+        List<ChatMessageResponse> recentMessages = new java.util.ArrayList<>();
+        if (loginTime != null) {
+            for (ChatMessageResponse msg : allResponses) {
+                if (msg.getCreateTime().toInstant(java.time.ZoneOffset.ofHours(8)).toEpochMilli() < loginTime) {
+                    historyMessages.add(msg);
+                } else {
+                    recentMessages.add(msg);
+                }
+            }
+        } else {
+            historyMessages.addAll(allResponses);
+        }
+
+        // 只缓存历史消息
+        if (cachedMessages == null && !historyMessages.isEmpty()) {
+            redisUtil.setObject(cacheKey, historyMessages, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
+        }
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("historyMessages", historyMessages);
+        result.put("recentMessages", recentMessages);
+        result.put("hasHistoryDivider", !historyMessages.isEmpty() && !recentMessages.isEmpty());
+        return result;
+    }
+
+    @Override
+    public void clearChatCache(Long user1Id, Long user2Id) {
+        // 清除不同limit的缓存
+        String[] limits = {"20", "50", "100"};
+        for (String limit : limits) {
+            String cacheKey = generateChatCacheKey(user1Id, user2Id, Integer.parseInt(limit));
+            redisUtil.delete(cacheKey);
+        }
     }
 
     @Override
@@ -135,9 +208,9 @@ public class ChatServiceImpl implements ChatService {
         response.setIsRead(message.getIsRead());
         response.setCreateTime(message.getCreateTime());
 
-        // 获取发送者和接收者姓名
-        User sender = userMapper.selectById(message.getSenderId());
-        User receiver = userMapper.selectById(message.getReceiverId());
+        // 使用缓存获取用户信息，避免重复查询
+        User sender = getUserFromCache(message.getSenderId());
+        User receiver = getUserFromCache(message.getReceiverId());
         
         if (sender != null) {
             response.setSenderName(sender.getUsername());
@@ -147,5 +220,9 @@ public class ChatServiceImpl implements ChatService {
         }
 
         return response;
+    }
+
+    private String generateChatCacheKey(Long user1Id, Long user2Id, Integer limit) {
+        return "chat_history:" + user1Id + ":" + user2Id + ":" + limit;
     }
 } 

@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.example.academic_collab_platform_backend.service.ChatWebSocketService;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -25,6 +26,8 @@ public class ChatController {
     private ChatService chatService;
     @Autowired
     private JwtUtil jwtUtil;
+    @Autowired
+    private ChatWebSocketService chatWebSocketService;
 
     private Long getCurrentUserId(HttpServletRequest request) {
         String token = request.getHeader("Authorization");
@@ -35,17 +38,11 @@ public class ChatController {
     }
 
     /**
-     * 发送消息
+     * 发送消息（已废弃，前端请只用WebSocket发送消息）
      */
     @PostMapping("/send")
     public ResponseEntity<?> sendMessage(@RequestBody ChatMessageRequest request,HttpServletRequest httpRequest){
-        try{
-            Long senderId=getCurrentUserId(httpRequest);
-            ChatMessageResponse response=chatService.sendMessage(senderId,request);
-            return ResponseEntity.ok(ResponseUtil.success(response));
-        }catch (Exception e){
-            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
-        }
+        return ResponseEntity.badRequest().body(ResponseUtil.error("请使用WebSocket发送消息"));
     }
 
     /**
@@ -66,6 +63,38 @@ public class ChatController {
         }
     }
 
+    /**
+     * 获取聊天历史（带缓存）
+     */
+    @GetMapping("/history-with-cache/{userId}")
+    public ResponseEntity<?> getChatHistoryWithCache(
+        @PathVariable Long userId,
+        @RequestParam(defaultValue = "50") Integer limit,
+        @RequestParam(required = false) Long loginTime,
+        HttpServletRequest httpRequest
+    ) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            Map<String, Object> result = chatService.getChatHistoryWithCache(currentUserId, userId, limit, loginTime);
+            return ResponseEntity.ok(ResponseUtil.success(result));
+        } catch(Exception e) {
+            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * 清除聊天缓存
+     */
+    @DeleteMapping("/cache/{userId}")
+    public ResponseEntity<?> clearChatCache(@PathVariable Long userId, HttpServletRequest httpRequest) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            chatService.clearChatCache(currentUserId, userId);
+            return ResponseEntity.ok(ResponseUtil.successMsg("缓存已清除"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
+        }
+    }
 
     /**
      * 获取用户列表
@@ -90,6 +119,8 @@ public class ChatController {
         try {
             Long currentUserId = getCurrentUserId(httpRequest);
             chatService.markMessagesAsRead(userId, currentUserId);
+            // 新增：推送未读数
+            chatWebSocketService.pushUnreadMap(currentUserId);
             return ResponseEntity.ok(ResponseUtil.successMsg("消息已标记为已读"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));

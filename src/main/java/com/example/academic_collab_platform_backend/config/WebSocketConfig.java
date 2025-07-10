@@ -13,10 +13,16 @@ import org.springframework.http.server.ServerHttpRequest;
 import java.security.Principal;
 import java.util.Map;
 import org.springframework.context.annotation.Bean;
+import com.example.academic_collab_platform_backend.config.UserIdHandshakeInterceptor;
+import com.example.academic_collab_platform_backend.util.JwtUtil;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Bean
     public DefaultHandshakeHandler handshakeHandler() {
@@ -32,6 +38,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
+                .addInterceptors(new UserIdHandshakeInterceptor(jwtUtil))
                 .setHandshakeHandler(handshakeHandler())
                 .setAllowedOriginPatterns("*")
                 .withSockJS();

@@ -66,12 +66,7 @@ public class ChatWebSocketController {
         String userId=payload.get("userId").toString();
         headerAccessor.getSessionAttributes().put("userId",userId);
         // 确保attributes中也有userId，供HandshakeHandler使用
-        headerAccessor.setUser(new java.security.Principal() {
-            @Override
-            public String getName() {
-                return userId;
-            }
-        });
+        headerAccessor.setUser(() -> userId);
         chatWebSocketService.handleUserConnect(Long.valueOf(userId), headerAccessor.getSessionId());
         return null;
     }
@@ -79,6 +74,7 @@ public class ChatWebSocketController {
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload ChatMessageRequest chatMessageRequest, SimpMessageHeaderAccessor headerAccessor){
         String currentUserId = headerAccessor.getSessionAttributes().get("userId").toString();
+        System.out.println("[WebSocket] ChatWebSocketController.sendMessage 被调用, userId=" + currentUserId + ", 消息内容: " + chatMessageRequest);
         Long userId = currentUserId != null ? Long.valueOf(currentUserId) : null;
         if(userId == null)
             throw new RuntimeException("未认证用户，无法发送消息!");
