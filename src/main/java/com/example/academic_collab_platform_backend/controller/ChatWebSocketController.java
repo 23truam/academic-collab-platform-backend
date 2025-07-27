@@ -60,6 +60,7 @@ public class ChatWebSocketController {
     @Autowired
     ChatWebSocketService chatWebSocketService;
 
+/*
     @MessageMapping("/chat.addUser")
     @SendTo("/topic/public")
     public ChatMessageResponse addUser(@Payload Map<String,Object> payload,SimpMessageHeaderAccessor headerAccessor){
@@ -70,6 +71,18 @@ public class ChatWebSocketController {
         chatWebSocketService.handleUserConnect(Long.valueOf(userId), headerAccessor.getSessionId());
         return null;
     }
+*/
+
+    @MessageMapping("/chat.addUser")
+    @SendTo("/topic/public")
+    public ChatMessageResponse addUser(@Payload Map<String,Object> payload,SimpMessageHeaderAccessor headerAccessor){
+        String userId=payload.get("userId").toString();
+        headerAccessor.getSessionAttributes().put("userId",userId);
+        headerAccessor.setUser(()->userId);
+        chatWebSocketService.handleUserConnect(Long.valueOf(userId),headerAccessor.getSessionId());
+        return null;
+    }
+
 
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload ChatMessageRequest chatMessageRequest, SimpMessageHeaderAccessor headerAccessor){
@@ -81,6 +94,7 @@ public class ChatWebSocketController {
         chatWebSocketService.handleSendMessage(userId, chatMessageRequest);
         // 不再return，也不@SendTo
     }
+
 
     @MessageMapping("/chat.leave")
     @SendTo("/topic/public")

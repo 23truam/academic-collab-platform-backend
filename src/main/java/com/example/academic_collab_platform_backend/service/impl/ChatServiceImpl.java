@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import javax.swing.text.StyledEditorKit;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -83,21 +85,55 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public Map<String, Object> getChatHistoryWithCache(Long user1Id, Long user2Id, Integer limit, Long loginTime) {
         String cacheKey = generateChatCacheKey(user1Id, user2Id, limit);
+
+        // 1. 读取缓存
+        List<ChatMessageResponse> cachedMessages = getCachedHistoryMessages(cacheKey);
+
+        // 2. 查库并转换
+        List<ChatMessageResponse> allResponses = getAllChatMessages(user1Id, user2Id, limit);
+
+        // 3. 分区
+        Map<String, List<ChatMessageResponse>> split = splitHistoryAndRecentMessages(allResponses, loginTime);
+        List<ChatMessageResponse> historyMessages = split.get("history");
+        List<ChatMessageResponse> recentMessages = split.get("recent");
+
+        // 4. 写入缓存
+        if (cachedMessages == null && !historyMessages.isEmpty()) {
+            cacheHistoryMessages(cacheKey, historyMessages);
+        }
+
+        // 5. 组装结果
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("historyMessages", historyMessages);
+        result.put("recentMessages", recentMessages);
+        result.put("hasHistoryDivider", !historyMessages.isEmpty() && !recentMessages.isEmpty());
+        return result;
+    }
+
+    // 读取缓存中的历史消息
+    private List<ChatMessageResponse> getCachedHistoryMessages(String cacheKey) {
         String cachedJson = redisUtil.get(cacheKey);
-        List<ChatMessageResponse> cachedMessages = null;
         if (cachedJson != null) {
             try {
-                cachedMessages = redisUtil.getObjectMapper().readValue(cachedJson, 
-                    redisUtil.getObjectMapper().getTypeFactory().constructCollectionType(List.class, ChatMessageResponse.class));
+                return redisUtil.getObjectMapper().readValue(
+                        cachedJson,
+                        redisUtil.getObjectMapper().getTypeFactory().constructCollectionType(List.class, ChatMessageResponse.class)
+                );
             } catch (Exception e) {
                 redisUtil.delete(cacheKey);
             }
         }
+        return null;
+    }
 
+    // 查询数据库并转换为响应对象
+    private List<ChatMessageResponse> getAllChatMessages(Long user1Id, Long user2Id, Integer limit) {
         List<ChatMessage> allMessages = chatMessageMapper.getChatHistory(user1Id, user2Id, limit != null ? limit : 50);
-        List<ChatMessageResponse> allResponses = allMessages.stream().map(this::convertToResponse).collect(Collectors.toList());
+        return allMessages.stream().map(this::convertToResponse).collect(Collectors.toList());
+    }
 
-        // 按登录时间分为历史和新消息
+    // 按登录时间分为历史和新消息
+    private Map<String, List<ChatMessageResponse>> splitHistoryAndRecentMessages(List<ChatMessageResponse> allResponses, Long loginTime) {
         List<ChatMessageResponse> historyMessages = new java.util.ArrayList<>();
         List<ChatMessageResponse> recentMessages = new java.util.ArrayList<>();
         if (loginTime != null) {
@@ -111,18 +147,17 @@ public class ChatServiceImpl implements ChatService {
         } else {
             historyMessages.addAll(allResponses);
         }
-
-        // 只缓存历史消息
-        if (cachedMessages == null && !historyMessages.isEmpty()) {
-            redisUtil.setObject(cacheKey, historyMessages, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
-        }
-
-        Map<String, Object> result = new java.util.HashMap<>();
-        result.put("historyMessages", historyMessages);
-        result.put("recentMessages", recentMessages);
-        result.put("hasHistoryDivider", !historyMessages.isEmpty() && !recentMessages.isEmpty());
+        Map<String, List<ChatMessageResponse>> result = new java.util.HashMap<>();
+        result.put("history", historyMessages);
+        result.put("recent", recentMessages);
         return result;
     }
+
+    // 写入缓存
+    private void cacheHistoryMessages(String cacheKey, List<ChatMessageResponse> historyMessages) {
+        redisUtil.setObject(cacheKey, historyMessages, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
+    }
+
 
     @Override
     public void clearChatCache(Long user1Id, Long user2Id) {
@@ -162,13 +197,13 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public Map<Long, Integer> getUnreadCountMap(Long currentUserId) {
-        List<Map<String, Object>> list = chatMessageMapper.getUnreadCountMap(currentUserId);
-        Map<Long, Integer> result = new java.util.HashMap<>();
-        for (Map<String, Object> row : list) {
-            Long senderId = ((Number) row.get("sender_id")).longValue();
-            Integer count = ((Number) row.get("cnt")).intValue();
-            result.put(senderId, count);
+    public Map<Long,Integer> getUnreadCountMap(Long currentUserId){
+        List<Map<String,Object>> list=chatMessageMapper.getUnreadCountMap(currentUserId);
+        Map<Long,Integer> result=new HashMap<>();
+        for(Map<String,Object> row:list){
+            Long senderId=((Number) row.get("sender_id")).longValue();
+            Integer count=((Number)row.get("cnt")).intValue();
+            result.put(senderId,count);
         }
         return result;
     }

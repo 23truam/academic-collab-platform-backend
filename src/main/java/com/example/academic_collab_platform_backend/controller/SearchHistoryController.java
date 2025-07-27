@@ -3,11 +3,13 @@ package com.example.academic_collab_platform_backend.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.example.academic_collab_platform_backend.model.SearchHistory;
 import com.example.academic_collab_platform_backend.service.SearchHistoryService;
+import com.example.academic_collab_platform_backend.util.ResponseUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 最近搜索历史接口控制器，负责处理用户最近搜索历史的增删查请求。
@@ -29,11 +31,12 @@ public class SearchHistoryController {
      * @return 分页搜索历史列表
      */
     @GetMapping
-    public IPage<SearchHistory> getHistory(
+    public Map<String, Object> getHistory(
             @RequestParam String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return searchHistoryService.getHistory(userId, page, size);
+        IPage<SearchHistory> result = searchHistoryService.getHistory(userId, page, size);
+        return ResponseUtil.success(result);
     }
 
     /**
@@ -41,8 +44,9 @@ public class SearchHistoryController {
      * @param item 搜索历史对象
      */
     @PostMapping
-    public void addHistory(@RequestBody SearchHistory item) throws JsonProcessingException {
+    public Map<String, Object> addHistory(@RequestBody SearchHistory item) throws JsonProcessingException {
         searchHistoryService.addSearchHistory(item);
+        return ResponseUtil.successMsg("搜索历史添加成功");
     }
 
     /**
@@ -50,8 +54,9 @@ public class SearchHistoryController {
      * @param userId 用户ID
      */
     @DeleteMapping
-    public void clearHistory(@RequestParam String userId) {
+    public Map<String, Object> clearHistory(@RequestParam String userId) {
         searchHistoryService.clearHistory(userId);
+        return ResponseUtil.successMsg("搜索历史清空成功");
     }
 
     /**
@@ -61,10 +66,11 @@ public class SearchHistoryController {
      * @return 最近搜索历史列表
      */
     @GetMapping("/recent")
-    public List<SearchHistory> getRecentSearchHistory(
+    public Map<String, Object> getRecentSearchHistory(
             @RequestParam String userId,
             @RequestParam(defaultValue = "5") int limit) {
-        return searchHistoryService.getRecentSearchHistory(userId, limit);
+        List<SearchHistory> result = searchHistoryService.getRecentSearchHistory(userId, limit);
+        return ResponseUtil.success(result);
     }
 } 
  

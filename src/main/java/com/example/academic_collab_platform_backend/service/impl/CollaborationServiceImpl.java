@@ -9,12 +9,14 @@ import com.example.academic_collab_platform_backend.model.CollaborationResult;
 import com.example.academic_collab_platform_backend.model.Paper;
 import com.example.academic_collab_platform_backend.model.PaperAuthor;
 import com.example.academic_collab_platform_backend.service.CollaborationService;
+import com.example.academic_collab_platform_backend.service.GraphEmbeddingService;
 import com.example.academic_collab_platform_backend.dto.CollaborationPredictResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.HashMap;
 
 /**
  * 合作关系分析与预测业务实现类，负责合作分析与合作预测等具体业务逻辑。
@@ -30,6 +32,9 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     @Autowired
     private AuthorMapper authorMapper;
+    
+    @Autowired
+    private GraphEmbeddingService graphEmbeddingService;
 
     /**
      * 分析指定作者的合作关系。
@@ -99,7 +104,7 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     /**
      * 预测指定作者的潜在合作对象。
-     * 迁移前端算法，返回详细DTO列表。
+     * 基于图嵌入算法，结合传统特征，返回详细DTO列表。
      */
     @Override
     public List<CollaborationPredictResponse> predictCollaborators(Long authorId, List<String> directions, Integer minPapers, Integer startYear, Integer endYear) {
@@ -135,7 +140,16 @@ public class CollaborationServiceImpl implements CollaborationService {
                 .filter(a -> !a.getId().equals(authorId) && !coauthorIds.contains(a.getId()))
                 .collect(Collectors.toList());
 
-        // 5. 计算每个潜在合作者的分数
+        // 5. 使用图嵌入预测（如果可用）
+        Map<Long, Double> embeddingScores = new HashMap<>();
+        if (graphEmbeddingService.isEmbeddingsLoaded()) {
+            List<Long> candidateIds = potentialCoauthors.stream()
+                    .map(Author::getId)
+                    .collect(Collectors.toList());
+            embeddingScores = graphEmbeddingService.predictCollaboratorsByEmbedding(authorId, candidateIds, 50);
+        }
+
+        // 6. 计算每个潜在合作者的综合分数
         List<CollaborationPredictResponse> result = new ArrayList<>();
         for (Author coauthor : potentialCoauthors) {
             // 获取潜在合作者的论文
@@ -164,33 +178,60 @@ public class CollaborationServiceImpl implements CollaborationService {
             }
             int commonCoauthors = (int) coCoauthorIds.stream().filter(coauthorIds::contains).count();
 
-            // 研究方向向量（简单实现：统计论文标题/方向字段出现的关键词）
+            // 传统特征计算
             double[] authorVec = getDirectionVector(authorPapers, directions);
             double[] coauthorVec = getDirectionVector(coauthorPapers, directions);
             double cosineScore = cosineSimilarity(authorVec, coauthorVec);
             double jsScore = 1 - Math.min(1, jsDivergence(authorVec, coauthorVec));
             double directionScore = 0.7 * cosineScore + 0.3 * jsScore;
-            double baseScore = Math.max(0.3, Math.min(0.9, directionScore));
-            double finalDirectionScore = baseScore + (Math.random() * 0.1 - 0.05);
+            
+            // 图嵌入分数
+            double embeddingScore = embeddingScores.getOrDefault(coauthor.getId(), 0.0);
+            
+            // 综合评分：结合传统特征和图嵌入
+            double traditionalWeight = 0.4;
+            double embeddingWeight = 0.6;
+            
+            double finalScore;
+            if (graphEmbeddingService.isEmbeddingsLoaded()) {
+                // 使用图嵌入和传统特征的加权组合
+                finalScore = embeddingWeight * embeddingScore + traditionalWeight * directionScore;
+            } else {
+                // 仅使用传统特征
+                finalScore = directionScore;
+            }
+            
+            // 添加一些随机性以避免完全相同的分数
+            finalScore = Math.max(0.1, Math.min(0.95, finalScore + (Math.random() * 0.05 - 0.025)));
 
             CollaborationPredictResponse resp = new CollaborationPredictResponse();
             resp.setName(coauthor.getName());
             resp.setPaperCount(coauthorPapers.size());
             resp.setCommonCoauthors(commonCoauthors);
-            resp.setDirectionScore(String.format("%.1f%%", finalDirectionScore * 100));
-            resp.setTotalScore(String.format("%.1f%%", finalDirectionScore * 100));
-            resp.setScoreValue(finalDirectionScore);
+            resp.setDirectionScore(String.format("%.1f%%", directionScore * 100));
+            resp.setTotalScore(String.format("%.1f%%", finalScore * 100));
+            resp.setScoreValue(finalScore);
+            
             List<CollaborationPredictResponse.Indicator> indicators = new ArrayList<>();
             CollaborationPredictResponse.Indicator i1 = new CollaborationPredictResponse.Indicator();
             i1.setName("论文数量"); i1.setValue(coauthorPapers.size());
             CollaborationPredictResponse.Indicator i2 = new CollaborationPredictResponse.Indicator();
             i2.setName("共同合作者"); i2.setValue(commonCoauthors);
             CollaborationPredictResponse.Indicator i3 = new CollaborationPredictResponse.Indicator();
-            i3.setName("研究方向匹配度"); i3.setValue(finalDirectionScore * 10);
+            i3.setName("研究方向匹配度"); i3.setValue(directionScore * 10);
+            
+            // 如果使用图嵌入，添加嵌入相似度指标
+            if (graphEmbeddingService.isEmbeddingsLoaded()) {
+                CollaborationPredictResponse.Indicator i4 = new CollaborationPredictResponse.Indicator();
+                i4.setName("图嵌入相似度"); i4.setValue(embeddingScore * 10);
+                indicators.add(i4);
+            }
+            
             indicators.add(i1); indicators.add(i2); indicators.add(i3);
             resp.setIndicators(indicators);
             result.add(resp);
         }
+        
         // 按分数排序，取前10
         result.sort((a, b) -> Double.compare(b.getScoreValue(), a.getScoreValue()));
         return result.size() > 10 ? result.subList(0, 10) : result;
@@ -237,15 +278,40 @@ public class CollaborationServiceImpl implements CollaborationService {
     private double[] getDirectionVector(List<Paper> papers, List<String> directions) {
         double[] vec = new double[directions.size()];
         if (papers == null || papers.isEmpty()) return vec;
+        
+        // 研究方向关键词映射
+        Map<String, List<String>> directionKeywords = new HashMap<>();
+        directionKeywords.put("ai", Arrays.asList("artificial intelligence", "ai", "智能"));
+        directionKeywords.put("ml", Arrays.asList("machine learning", "ml", "机器学习"));
+        directionKeywords.put("nlp", Arrays.asList("natural language", "nlp", "自然语言"));
+        directionKeywords.put("cv", Arrays.asList("computer vision", "cv", "计算机视觉"));
+        directionKeywords.put("db", Arrays.asList("database", "db", "数据库"));
+        directionKeywords.put("se", Arrays.asList("software engineering", "se", "软件工程"));
+        directionKeywords.put("iot", Arrays.asList("internet of things", "iot", "物联网"));
+        directionKeywords.put("security", Arrays.asList("security", "cybersecurity", "安全"));
+        directionKeywords.put("cloud", Arrays.asList("cloud", "cloud computing", "云计算"));
+        directionKeywords.put("distributed", Arrays.asList("distributed", "distributed systems", "分布式"));
+        
         for (Paper paper : papers) {
             String title = paper.getTitle() != null ? paper.getTitle().toLowerCase() : "";
+            String abstractText = paper.getAbstractText() != null ? paper.getAbstractText().toLowerCase() : "";
+            String fullText = title + " " + abstractText;
+            
             for (int i = 0; i < directions.size(); i++) {
                 String dir = directions.get(i);
-                if (title.contains(dir)) {
-                    vec[i]++;
+                List<String> keywords = directionKeywords.get(dir);
+                
+                if (keywords != null) {
+                    for (String keyword : keywords) {
+                        if (fullText.contains(keyword)) {
+                            vec[i]++;
+                            break; // 找到一个关键词就足够了
+                        }
+                    }
                 }
             }
         }
+        
         // 若全为0，兜底均匀分布
         boolean allZero = Arrays.stream(vec).allMatch(v -> v == 0);
         if (allZero) Arrays.fill(vec, 1.0);

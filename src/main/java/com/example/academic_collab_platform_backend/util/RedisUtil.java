@@ -218,4 +218,33 @@ public class RedisUtil {
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
+
+    /**
+     * 向列表左侧添加元素（LPUSH）
+     * @param key 列表key
+     * @param value 要添加的值
+     * @return 列表长度
+     */
+    public long lpush(String key, String value) {
+        return redisTemplate.opsForList().leftPush(key, value);
+    }
+
+    /**
+     * 从列表右侧弹出元素（RPOP）
+     * @param key 列表key
+     * @return 弹出的值，如果列表为空返回null
+     */
+    public String rpop(String key) {
+        return redisTemplate.opsForList().rightPop(key);
+    }
+
+    /**
+     * 获取列表长度
+     * @param key 列表key
+     * @return 列表长度
+     */
+    public long llen(String key) {
+        Long size = redisTemplate.opsForList().size(key);
+        return size != null ? size : 0;
+    }
 } 

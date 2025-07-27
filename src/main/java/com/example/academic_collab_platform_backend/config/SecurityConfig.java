@@ -36,6 +36,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .antMatchers("/", "/index.html").permitAll()
             .antMatchers("/api/user/register", "/api/user/login").permitAll()
             .antMatchers("/api/auth/**").permitAll()
+            .antMatchers("/api/collaboration/**").permitAll() // 放行合作预测接口
             .antMatchers("/ws/**").permitAll() // 放行WebSocket端点
             .anyRequest().authenticated();
         http.addFilterBefore(new JwtAuthenticationFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class);

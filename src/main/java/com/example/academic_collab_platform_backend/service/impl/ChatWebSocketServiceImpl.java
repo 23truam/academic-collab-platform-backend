@@ -81,6 +81,8 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         pushUnreadMap(userId);
     }
 
+
+
     public void handleUserDisconnect(Long userId) {
         System.out.println("[WebSocket] 用户下线: " + userId);
         chatService.updateUserOnlineStatus(userId, false, null);

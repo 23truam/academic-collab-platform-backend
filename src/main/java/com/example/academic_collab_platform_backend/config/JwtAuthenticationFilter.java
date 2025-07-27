@@ -30,7 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(token) && !jwtUtil.isTokenExpired(token)) {
             Claims claims = jwtUtil.extractAllClaims(token);
             String username = claims.getSubject();
-            // 你可以从claims中获取userId等信息
+            // 从claims中获取userId等信息
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(username, null, null);
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
