@@ -52,6 +52,13 @@ public class DataImporter implements CommandLineRunner {
             // 用于存储作者名到ID的映射
             Map<String, Long> authorNameToId = new HashMap<>();
             
+            // 预先加载数据库中已存在的作者到内存映射中
+            List<Author> existingAuthors = authorMapper.selectList(null);
+            for (Author author : existingAuthors) {
+                authorNameToId.put(author.getName(), author.getId());
+            }
+            System.out.println("已加载 " + existingAuthors.size() + " 个现有作者到内存缓存");
+            
             for (Map<String, Object> item : rawData) {
                 // 创建Paper对象
                 Paper paper = new Paper();
@@ -82,22 +89,62 @@ public class DataImporter implements CommandLineRunner {
                     List<String> authors = (List<String>) authorsObj;
                     for (String authorName : authors) {
                         if (authorName != null && !authorName.trim().isEmpty()) {
-                            // 检查作者是否已存在
-                            Long authorId = authorNameToId.get(authorName);
+                            // 检查作者是否已存在（先查内存缓存，再查数据库）
+                            String trimmedName = authorName.trim();
+                            Long authorId = authorNameToId.get(trimmedName);
                             if (authorId == null) {
-                                // 创建新作者
-                                Author author = new Author();
-                                author.setName(authorName.trim());
-                                authorMapper.insert(author);
-                                authorId = author.getId();
-                                authorNameToId.put(authorName.trim(), authorId);
+                                // 先从数据库查询是否已存在该作者
+                                Author existingAuthor = authorMapper.selectOne(
+                                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Author>()
+                                        .eq("name", trimmedName)
+                                );
+                                
+                                if (existingAuthor != null) {
+                                    // 数据库中已存在，使用现有ID
+                                    authorId = existingAuthor.getId();
+                                    authorNameToId.put(trimmedName, authorId);
+                                } else {
+                                    // 数据库中不存在，创建新作者
+                                    try {
+                                        Author author = new Author();
+                                        author.setName(trimmedName);
+                                        authorMapper.insert(author);
+                                        authorId = author.getId();
+                                        authorNameToId.put(trimmedName, authorId);
+                                    } catch (Exception e) {
+                                        // 如果插入失败（可能是并发插入导致重复），再次查询数据库
+                                        Author retryAuthor = authorMapper.selectOne(
+                                            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Author>()
+                                                .eq("name", trimmedName)
+                                        );
+                                        if (retryAuthor != null) {
+                                            authorId = retryAuthor.getId();
+                                            authorNameToId.put(trimmedName, authorId);
+                                        } else {
+                                            throw e; // 如果还是失败，抛出异常
+                                        }
+                                    }
+                                }
                             }
                             
-                            // 创建Paper-Author关系
-                            PaperAuthor paperAuthor = new PaperAuthor();
-                            paperAuthor.setPaperId(paperId);
-                            paperAuthor.setAuthorId(authorId);
-                            paperAuthorMapper.insert(paperAuthor);
+                            // 创建Paper-Author关系（检查是否已存在）
+                            PaperAuthor existingRelation = paperAuthorMapper.selectOne(
+                                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<PaperAuthor>()
+                                    .eq("paper_id", paperId)
+                                    .eq("author_id", authorId)
+                            );
+                            
+                            if (existingRelation == null) {
+                                PaperAuthor paperAuthor = new PaperAuthor();
+                                paperAuthor.setPaperId(paperId);
+                                paperAuthor.setAuthorId(authorId);
+                                try {
+                                    paperAuthorMapper.insert(paperAuthor);
+                                } catch (Exception e) {
+                                    // 忽略重复插入错误，可能是并发导致的
+                                    System.out.println("跳过重复的Paper-Author关系: paperId=" + paperId + ", authorId=" + authorId);
+                                }
+                            }
                         }
                     }
                 }

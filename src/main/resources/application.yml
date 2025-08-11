@@ -45,7 +45,7 @@ jwt:
   expiration: 86400000  # 24小时
 
 server:
-  port: 8080
+  port: 8081
   jackson:
     serialization:
       write-dates-as-timestamps: false
