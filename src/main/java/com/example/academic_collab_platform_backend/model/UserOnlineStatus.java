@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
 @TableName("user_online_status")
 public class UserOnlineStatus {
     
-    @TableId(type = IdType.AUTO)
+    // user_id 与 users(id) 一一对应，非自增主键
+    @TableId(type = IdType.INPUT)
     private Long userId;
     
     private Boolean isOnline;

@@ -210,18 +210,18 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void updateUserOnlineStatus(Long userId, Boolean isOnline, String sessionId) {
-        UserOnlineStatus status = userOnlineStatusMapper.selectById(userId);
-        if (status == null) {
-            status = new UserOnlineStatus();
-            status.setUserId(userId);
-        }
+        // 先查询是否已存在记录；注意：不能根据是否设置了 userId 来判断是否为新记录
+        UserOnlineStatus existing = userOnlineStatusMapper.selectById(userId);
+
+        UserOnlineStatus status = existing != null ? existing : new UserOnlineStatus();
+        status.setUserId(userId);
         status.setIsOnline(isOnline);
         if (Boolean.TRUE.equals(isOnline)) {
             status.setLastLoginTime(LocalDateTime.now());
         }
         status.setSessionId(sessionId);
 
-        if (status.getUserId() != null) {
+        if (existing != null) {
             userOnlineStatusMapper.updateById(status);
         } else {
             userOnlineStatusMapper.insert(status);

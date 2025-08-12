@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.academic_collab_platform_backend.mapper.PaperAuthorMapper">
+    <select id="selectAuthorPaperCounts" resultType="map">
+        SELECT author_id AS authorId, COUNT(*) AS cnt
+        FROM paper_authors
+        GROUP BY author_id
+    </select>
+</mapper>
+
+

@@ -192,19 +192,60 @@ public class AuthorServiceImpl implements AuthorService {
     public List<Author> getTopAuthors(int limit, Integer year) {
         // 从缓存获取所有作者
         List<Author> allAuthors = getAllAuthors();
-        Map<Long, Integer> authorPaperCount = new HashMap<>();
-        
+
+        // 优先从 Redis 获取作者论文数聚合
+        final String AUTHOR_PAPER_COUNT_KEY = "author:paperCount:all";
+        Map<Long, Integer> authorPaperCount = null;
+        try {
+            String cachedJson = redisUtil.get(AUTHOR_PAPER_COUNT_KEY);
+            if (cachedJson != null) {
+                // 反序列化为 Map<Long, Integer>
+                authorPaperCount = redisUtil.getObjectMapper().readValue(
+                    cachedJson,
+                    redisUtil.getObjectMapper().getTypeFactory().constructMapType(Map.class, Long.class, Integer.class)
+                );
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
+        if (authorPaperCount == null || authorPaperCount.isEmpty()) {
+            // 缓存未命中，走一次聚合 SQL 并写入缓存
+            authorPaperCount = new HashMap<>();
+            List<Map<String, Object>> rows = paperAuthorMapper.selectAuthorPaperCounts();
+            for (Map<String, Object> row : rows) {
+                Object aid = row.get("authorId");
+                Object cnt = row.get("cnt");
+                if (aid != null && cnt != null) {
+                    authorPaperCount.put(((Number) aid).longValue(), ((Number) cnt).intValue());
+                }
+            }
+            // 设置缓存，过期时间 24 小时
+            try {
+                redisUtil.set(
+                    AUTHOR_PAPER_COUNT_KEY,
+                    redisUtil.getObjectMapper().writeValueAsString(authorPaperCount),
+                    CACHE_EXPIRE_TIME,
+                    TimeUnit.HOURS
+                );
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
+
+        // 回填每个作者的 paperCount 并排序
         for (Author author : allAuthors) {
-            int count = paperAuthorMapper.selectCount(new QueryWrapper<PaperAuthor>().eq("author_id", author.getId())).intValue();
-            authorPaperCount.put(author.getId(), count);
+            int count = authorPaperCount.getOrDefault(author.getId(), 0);
             author.setPaperCount(count);
         }
-        
-        List<Author> sortedAuthors = allAuthors.stream()
-            .sorted((a, b) -> authorPaperCount.getOrDefault(b.getId(), 0) - authorPaperCount.getOrDefault(a.getId(), 0))
+
+        return allAuthors.stream()
+            .sorted((a, b) -> Integer.compare(
+                b.getPaperCount() != null ? b.getPaperCount() : 0,
+                a.getPaperCount() != null ? a.getPaperCount() : 0
+            ))
             .limit(limit)
             .collect(Collectors.toList());
-        return sortedAuthors;
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.example.academic_collab_platform_backend.controller;
 
 import com.example.academic_collab_platform_backend.mapper.UserOnlineStatusMapper;
+import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.util.UserContextUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -19,11 +20,15 @@ public class UserStatusController {
     @Autowired
     private com.example.academic_collab_platform_backend.mapper.UserMapper userMapper;
 
+    @Autowired
+    private ChatService chatService;
+
     @PostMapping("/online")
     public ResponseEntity<?> setOnline(@RequestBody Map<String, Boolean> body) {
         Long userId = userContextUtil.getCurrentUserId();
         Boolean online = body.get("isOnline");
-        userOnlineStatusMapper.updateOnlineStatus(userId, online);
+        // 统一通过业务服务写入，确保首次登录也会插入记录
+        chatService.updateUserOnlineStatus(userId, online, null);
         return ResponseEntity.ok().build();
     }
 
