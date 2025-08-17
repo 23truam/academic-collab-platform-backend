@@ -6,10 +6,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content TEXT NOT NULL,
     message_type VARCHAR(20) DEFAULT 'TEXT' COMMENT '消息类型：TEXT, IMAGE, FILE',
     is_read BOOLEAN DEFAULT FALSE COMMENT '是否已读',
+    client_msg_id VARCHAR(64) NULL COMMENT '客户端生成的幂等ID',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_sender_receiver (sender_id, receiver_id),
     INDEX idx_create_time (create_time),
+    UNIQUE KEY uniq_sender_client_msg_id (sender_id, client_msg_id),
     FOREIGN KEY (sender_id) REFERENCES users(id),
     FOREIGN KEY (receiver_id) REFERENCES users(id)
 );
@@ -18,8 +20,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE TABLE IF NOT EXISTS user_online_status (
     user_id BIGINT PRIMARY KEY,
     is_online BOOLEAN DEFAULT FALSE,
-    last_online_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login_time DATETIME NULL,
     session_id VARCHAR(255),
+    last_logout_time DATETIME NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

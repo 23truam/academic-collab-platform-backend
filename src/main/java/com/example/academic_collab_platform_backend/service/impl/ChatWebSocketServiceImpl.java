@@ -14,6 +14,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ChatWebSocketServiceImpl implements ChatWebSocketService {
@@ -22,26 +23,29 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-/*    @Override
-    public void handleUserConnect(Long userId, String sessionId) {
-        chatService.updateUserOnlineStatus(userId, true, sessionId);
+    // 维护用户当前活跃会话对端：key=用户ID，value=正在聊天的对端用户ID
+    private static final Map<Long, Long> activePeerMap = new ConcurrentHashMap<>();
+
+    // 上线/下线事件由 WebSocket 层调用
+
+    @Override
+    public void setActivePeer(Long userId, Long peerUserId) {
+        if (userId == null) return;
+        if (peerUserId == null) {
+            activePeerMap.remove(userId);
+            System.out.println("[WebSocket] 清除活跃会话: userId=" + userId);
+        } else {
+            activePeerMap.put(userId, peerUserId);
+            System.out.println("[WebSocket] 设置活跃会话: userId=" + userId + ", peerUserId=" + peerUserId);
+        }
     }
 
     @Override
-    public void handleUserDisconnect(Long userId) {
-        chatService.updateUserOnlineStatus(userId, false, null);
+    public void clearActivePeer(Long userId) {
+        if (userId != null) {
+            activePeerMap.remove(userId);
+        }
     }
-
-    @Override
-    public ChatMessageResponse handleSendMessage(Long senderId, ChatMessageRequest request) {
-        ChatMessageResponse response = chatService.sendMessage(senderId, request);
-        messagingTemplate.convertAndSendToUser(
-            request.getReceiverId().toString(),
-            "/queue/messages",
-            response
-        );
-        return response;
-    }*/
 
     // 推送全局未读消息数
     @Override
@@ -71,6 +75,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         }
     }
 
+    @Override
     public void handleUserConnect(Long userId,String sessionId){
         System.out.println("[WebSocket] 用户上线: " + userId + ", sessionId: " + sessionId);
         chatService.updateUserOnlineStatus(userId,true,sessionId);
@@ -83,9 +88,12 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
 
 
 
+    @Override
     public void handleUserDisconnect(Long userId) {
         System.out.println("[WebSocket] 用户下线: " + userId);
         chatService.updateUserOnlineStatus(userId, false, null);
+        // 清理活跃会话映射
+        activePeerMap.remove(userId);
         // 推送下线
         broadcastUserStatus(userId, false);
         // 用户下线时也可推送（可选）
@@ -93,6 +101,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         pushUnreadMap(userId);
     }
 
+    @Override
     public ChatMessageResponse handleSendMessage(Long senderId, ChatMessageRequest request) {
         System.out.println("[WebSocket] handleSendMessage 被调用, senderId=" + senderId + ", receiverId=" + request.getReceiverId());
         ChatMessageResponse response=chatService.sendMessage(senderId,request);
@@ -100,10 +109,17 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 request.getReceiverId().toString(),
                 "/queue/messages",
                 response);
-        // 不再推送到/topic/public
-        // 新消息后推送未读消息数
-        pushUnreadCount(request.getReceiverId());
-        pushUnreadMap(request.getReceiverId());
+        // 新消息后，仅当接收方未与发送方处于同一活跃会话时，才推送未读统计
+        Long activePeer = activePeerMap.get(request.getReceiverId());
+        if (activePeer == null || !activePeer.equals(senderId)) {
+            System.out.println("[WebSocket] 推送未读统计: receiverId=" + request.getReceiverId() + ", activePeer=" + activePeer + ", senderId=" + senderId);
+            pushUnreadCount(request.getReceiverId());
+            pushUnreadMap(request.getReceiverId());
+        } else {
+            // 如果接收方正处于与发送方的活跃会话，直接标记为已读，避免未读红点闪烁
+            System.out.println("[WebSocket] 抑制未读推送并标记已读: receiverId=" + request.getReceiverId() + ", activePeer=" + activePeer + ", senderId=" + senderId);
+            chatService.markMessagesAsRead(senderId, request.getReceiverId());
+        }
         return response;
     }
 

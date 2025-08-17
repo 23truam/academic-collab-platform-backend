@@ -73,4 +73,16 @@ public class JwtUtil {
         final String extractedUsername = extractEmail(token);
         return (extractedUsername.equals(email) && !isTokenExpired(token));
     }
+
+    /**
+     * 提取签发时间（登录时间）毫秒值
+     */
+    public Long extractIssuedAtEpochMillis(String token) {
+        try {
+            Date issuedAt = extractAllClaims(token).getIssuedAt();
+            return issuedAt != null ? issuedAt.getTime() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 } 

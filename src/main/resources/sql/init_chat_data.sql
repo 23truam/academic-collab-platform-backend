@@ -17,7 +17,7 @@ INSERT INTO chat_messages (sender_id, receiver_id, content, message_type, is_rea
 (4, 1, '当然！我很乐意参与讨论。', 'TEXT', false, DATE_SUB(NOW(), INTERVAL 10 MINUTE), DATE_SUB(NOW(), INTERVAL 10 MINUTE));
 
 -- 插入用户在线状态
-INSERT IGNORE INTO user_online_status (user_id, is_online, last_online_time, session_id) VALUES
+INSERT IGNORE INTO user_online_status (user_id, is_online, last_login_time, session_id) VALUES
 (1, true, NOW(), NULL),
 (2, false, DATE_SUB(NOW(), INTERVAL 1 HOUR), NULL),
 (3, true, NOW(), NULL),

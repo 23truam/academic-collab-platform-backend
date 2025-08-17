@@ -17,4 +17,5 @@ public class ChatMessageResponse {
     private String messageType;
     private Boolean isRead;
     private LocalDateTime createTime;
+    private String clientMsgId;
 } 

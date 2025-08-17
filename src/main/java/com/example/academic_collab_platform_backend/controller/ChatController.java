@@ -10,9 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletRequest;
 import com.example.academic_collab_platform_backend.util.JwtUtil;
 import com.example.academic_collab_platform_backend.util.ResponseUtil;
-import org.springframework.web.multipart.MultipartRequest;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import com.example.academic_collab_platform_backend.service.ChatWebSocketService;
@@ -75,9 +73,48 @@ public class ChatController {
     ) {
         try {
             Long currentUserId = getCurrentUserId(httpRequest);
+            // 如果前端未传 loginTime，则默认使用 token 的签发时间作为登录时刻
+            if (loginTime == null) {
+                String token = httpRequest.getHeader("Authorization");
+                if (token != null && token.startsWith("Bearer ")) {
+                    token = token.substring(7);
+                }
+                Long issuedAt = jwtUtil.extractIssuedAtEpochMillis(token);
+                if (issuedAt != null) {
+                    loginTime = issuedAt;
+                }
+            }
             Map<String, Object> result = chatService.getChatHistoryWithCache(currentUserId, userId, limit, loginTime);
             return ResponseEntity.ok(ResponseUtil.success(result));
         } catch(Exception e) {
+            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * 设置当前活跃会话对端
+     */
+    @PostMapping("/active-session/{peerUserId}")
+    public ResponseEntity<?> setActiveSession(@PathVariable Long peerUserId, HttpServletRequest httpRequest) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            chatWebSocketService.setActivePeer(currentUserId, peerUserId);
+            return ResponseEntity.ok(ResponseUtil.successMsg("active session set"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
+        }
+    }
+
+    /**
+     * 清除当前活跃会话
+     */
+    @DeleteMapping("/active-session")
+    public ResponseEntity<?> clearActiveSession(HttpServletRequest httpRequest) {
+        try {
+            Long currentUserId = getCurrentUserId(httpRequest);
+            chatWebSocketService.clearActivePeer(currentUserId);
+            return ResponseEntity.ok(ResponseUtil.successMsg("active session cleared"));
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
         }
     }

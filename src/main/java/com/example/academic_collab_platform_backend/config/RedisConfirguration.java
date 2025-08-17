@@ -50,13 +50,14 @@ public class RedisConfirguration {
      * 配置Lettuce连接工厂，优化高并发性能
      */
     @Bean
+
     public LettuceConnectionFactory lettuceConnectionFactory() {
         // Redis连接配置
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
         redisConfig.setHostName("localhost"); // 根据实际配置修改
         redisConfig.setPort(6379);
         redisConfig.setDatabase(1);
-         redisConfig.setPassword("zxh68080656"); // 如果有密码，取消注释
+        redisConfig.setPassword("zxh68080656"); // 如果有密码，取消注释
         
         // Lettuce客户端配置，优化高并发
         LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()

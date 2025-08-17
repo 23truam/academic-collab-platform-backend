@@ -136,11 +136,6 @@
 			<artifactId>pytorch-engine</artifactId>
 			<version>0.22.1</version>
 		</dependency>
-		<dependency>
-			<groupId>ai.djl.pytorch</groupId>
-			<artifactId>pytorch-jni</artifactId>
-			<version>0.22.1</version>
-		</dependency>
 		
 		<!-- Apache Commons Math for mathematical operations -->
 		<dependency>

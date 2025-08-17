@@ -26,6 +26,9 @@ public class ChatMessage {
     private String messageType;
     
     private Boolean isRead;
+
+    // 客户端生成的幂等ID
+    private String clientMsgId;
     
     private LocalDateTime createTime;
     

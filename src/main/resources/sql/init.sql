@@ -49,13 +49,67 @@ CREATE TABLE IF NOT EXISTS search_history (
 );
 
 -- 创建索引
-CREATE INDEX idx_papers_year ON papers(year);
-CREATE INDEX idx_papers_title ON papers(title);
-CREATE INDEX idx_authors_name ON authors(name);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_search_history_user_id ON search_history(user_id);
-CREATE INDEX idx_search_history_timestamp ON search_history(timestamp);
+-- 为避免重复执行导致的错误，以下索引创建均做存在性判断
 
--- 修改user_online_status表的last_online_time字段为last_login_time
-ALTER TABLE user_online_status CHANGE last_online_time last_login_time DATETIME NULL COMMENT '最近一次登录时间'; 
+-- papers(year)
+SET @exists_idx_papers_year := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'papers' AND index_name = 'idx_papers_year'
+);
+SET @sql_idx_papers_year := IF(@exists_idx_papers_year = 0,
+    'CREATE INDEX idx_papers_year ON papers(year)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_papers_year; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- papers(title)
+SET @exists_idx_papers_title := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'papers' AND index_name = 'idx_papers_title'
+);
+SET @sql_idx_papers_title := IF(@exists_idx_papers_title = 0,
+    'CREATE INDEX idx_papers_title ON papers(title)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_papers_title; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- authors(name)
+SET @exists_idx_authors_name := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'authors' AND index_name = 'idx_authors_name'
+);
+SET @sql_idx_authors_name := IF(@exists_idx_authors_name = 0,
+    'CREATE INDEX idx_authors_name ON authors(name)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_authors_name; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- users(username)
+SET @exists_idx_users_username := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'idx_users_username'
+);
+SET @sql_idx_users_username := IF(@exists_idx_users_username = 0,
+    'CREATE INDEX idx_users_username ON users(username)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_users_username; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- users(email)
+SET @exists_idx_users_email := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'idx_users_email'
+);
+SET @sql_idx_users_email := IF(@exists_idx_users_email = 0,
+    'CREATE INDEX idx_users_email ON users(email)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_users_email; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- search_history(user_id)
+SET @exists_idx_sh_user_id := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'search_history' AND index_name = 'idx_search_history_user_id'
+);
+SET @sql_idx_sh_user_id := IF(@exists_idx_sh_user_id = 0,
+    'CREATE INDEX idx_search_history_user_id ON search_history(user_id)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_sh_user_id; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- search_history(timestamp)
+SET @exists_idx_sh_ts := (
+    SELECT COUNT(1) FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'search_history' AND index_name = 'idx_search_history_timestamp'
+);
+SET @sql_idx_sh_ts := IF(@exists_idx_sh_ts = 0,
+    'CREATE INDEX idx_search_history_timestamp ON search_history(timestamp)', 'SELECT 1');
+PREPARE stmt FROM @sql_idx_sh_ts; EXECUTE stmt; DEALLOCATE PREPARE stmt;

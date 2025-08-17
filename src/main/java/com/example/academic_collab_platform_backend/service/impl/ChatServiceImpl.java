@@ -1,6 +1,5 @@
 package com.example.academic_collab_platform_backend.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
 import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
@@ -12,12 +11,10 @@ import com.example.academic_collab_platform_backend.model.ChatMessage;
 import com.example.academic_collab_platform_backend.model.User;
 import com.example.academic_collab_platform_backend.model.UserOnlineStatus;
 import com.example.academic_collab_platform_backend.service.ChatService;
-import com.example.academic_collab_platform_backend.service.UserService;
 import com.example.academic_collab_platform_backend.util.RedisUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.swing.text.StyledEditorKit;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,8 +36,7 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private UserOnlineStatusMapper userOnlineStatusMapper;
 
-    @Autowired
-    private UserService userService;
+    // 注意：此处无需注入 UserService，保留最小依赖
 
     @Autowired
     private RedisUtil redisUtil;
@@ -63,15 +59,32 @@ public class ChatServiceImpl implements ChatService {
                 .content(request.getContent())
                 .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
                 .isRead(false)
+                .clientMsgId(request.getClientMsgId())
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now()).build();
 
-        chatMessageMapper.insert(message);
+        // 幂等插入（基于 senderId + clientMsgId 唯一索引）
+        try {
+            chatMessageMapper.insert(message);
+        } catch (Exception e) {
+            // 如果违反唯一约束，说明是重复发送，忽略插入并查询已存在记录用于返回
+            ChatMessageResponse existed = findByClientMsgId(senderId, request.getClientMsgId());
+            if (existed != null) return existed;
+            throw e;
+        }
 
         // 发送新消息后，清除相关缓存
         clearChatCache(senderId, request.getReceiverId());
 
         return convertToResponse(message);
+    }
+
+    private ChatMessageResponse findByClientMsgId(Long senderId, String clientMsgId) {
+        if (clientMsgId == null) return null;
+        QueryWrapper<ChatMessage> wrapper = new QueryWrapper<>();
+        wrapper.eq("sender_id", senderId).eq("client_msg_id", clientMsgId).last("LIMIT 1");
+        ChatMessage found = chatMessageMapper.selectOne(wrapper);
+        return found != null ? convertToResponse(found) : null;
     }
 
     @Override
@@ -86,23 +99,23 @@ public class ChatServiceImpl implements ChatService {
     public Map<String, Object> getChatHistoryWithCache(Long user1Id, Long user2Id, Integer limit, Long loginTime) {
         String cacheKey = generateChatCacheKey(user1Id, user2Id, limit);
 
-        // 1. 读取缓存
-        List<ChatMessageResponse> cachedMessages = getCachedHistoryMessages(cacheKey);
+        // 优先使用缓存中的“最近 limit 条消息”进行分区，避免每次都查库
+        List<ChatMessageResponse> messages = getCachedHistoryMessages(cacheKey);
+        if (messages == null) {
+            // 缓存未命中时再查库
+            messages = getAllChatMessages(user1Id, user2Id, limit);
+            if (!messages.isEmpty()) {
+                // 将最近 limit 条消息写入缓存
+                cacheHistoryMessages(cacheKey, messages);
+            }
+        }
 
-        // 2. 查库并转换
-        List<ChatMessageResponse> allResponses = getAllChatMessages(user1Id, user2Id, limit);
-
-        // 3. 分区
-        Map<String, List<ChatMessageResponse>> split = splitHistoryAndRecentMessages(allResponses, loginTime);
+        // 基于缓存/数据库得到的消息进行分区
+        Map<String, List<ChatMessageResponse>> split = splitHistoryAndRecentMessages(messages, loginTime);
         List<ChatMessageResponse> historyMessages = split.get("history");
         List<ChatMessageResponse> recentMessages = split.get("recent");
 
-        // 4. 写入缓存
-        if (cachedMessages == null && !historyMessages.isEmpty()) {
-            cacheHistoryMessages(cacheKey, historyMessages);
-        }
-
-        // 5. 组装结果
+        // 组装结果
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("historyMessages", historyMessages);
         result.put("recentMessages", recentMessages);
@@ -110,7 +123,7 @@ public class ChatServiceImpl implements ChatService {
         return result;
     }
 
-    // 读取缓存中的历史消息
+    // 读取缓存中的最近 limit 条消息
     private List<ChatMessageResponse> getCachedHistoryMessages(String cacheKey) {
         String cachedJson = redisUtil.get(cacheKey);
         if (cachedJson != null) {
@@ -134,11 +147,14 @@ public class ChatServiceImpl implements ChatService {
 
     // 按登录时间分为历史和新消息
     private Map<String, List<ChatMessageResponse>> splitHistoryAndRecentMessages(List<ChatMessageResponse> allResponses, Long loginTime) {
-        List<ChatMessageResponse> historyMessages = new java.util.ArrayList<>();
-        List<ChatMessageResponse> recentMessages = new java.util.ArrayList<>();
+        List<ChatMessageResponse> historyMessages = new ArrayList<>();
+        List<ChatMessageResponse> recentMessages = new ArrayList<>();
         if (loginTime != null) {
+            java.time.LocalDateTime loginLocalDateTime = java.time.Instant.ofEpochMilli(loginTime)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDateTime();
             for (ChatMessageResponse msg : allResponses) {
-                if (msg.getCreateTime().toInstant(java.time.ZoneOffset.ofHours(8)).toEpochMilli() < loginTime) {
+                if (msg.getCreateTime() == null || msg.getCreateTime().isBefore(loginLocalDateTime)) {
                     historyMessages.add(msg);
                 } else {
                     recentMessages.add(msg);
@@ -153,7 +169,7 @@ public class ChatServiceImpl implements ChatService {
         return result;
     }
 
-    // 写入缓存
+    // 写入缓存（最近 limit 条消息）
     private void cacheHistoryMessages(String cacheKey, List<ChatMessageResponse> historyMessages) {
         redisUtil.setObject(cacheKey, historyMessages, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
     }
@@ -164,8 +180,13 @@ public class ChatServiceImpl implements ChatService {
         // 清除不同limit的缓存
         String[] limits = {"20", "50", "100"};
         for (String limit : limits) {
-            String cacheKey = generateChatCacheKey(user1Id, user2Id, Integer.parseInt(limit));
-            redisUtil.delete(cacheKey);
+            // 兼容历史（未排序）与新规则（排序）两种缓存键
+            String oldKey = "chat_history:" + user1Id + ":" + user2Id + ":" + limit;
+            String oldKeyReverse = "chat_history:" + user2Id + ":" + user1Id + ":" + limit;
+            String newKey = generateChatCacheKey(user1Id, user2Id, Integer.parseInt(limit));
+            redisUtil.delete(oldKey);
+            redisUtil.delete(oldKeyReverse);
+            redisUtil.delete(newKey);
         }
     }
 
@@ -242,6 +263,7 @@ public class ChatServiceImpl implements ChatService {
         response.setMessageType(message.getMessageType());
         response.setIsRead(message.getIsRead());
         response.setCreateTime(message.getCreateTime());
+        response.setClientMsgId(message.getClientMsgId());
 
         // 使用缓存获取用户信息，避免重复查询
         User sender = getUserFromCache(message.getSenderId());
@@ -258,6 +280,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private String generateChatCacheKey(Long user1Id, Long user2Id, Integer limit) {
-        return "chat_history:" + user1Id + ":" + user2Id + ":" + limit;
+        long a = Math.min(user1Id, user2Id);
+        long b = Math.max(user1Id, user2Id);
+        return "chat_history:" + a + ":" + b + ":" + limit;
     }
 } 
