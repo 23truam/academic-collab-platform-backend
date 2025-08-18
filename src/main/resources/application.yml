@@ -9,7 +9,8 @@ spring:
     init:
       mode: always
       schema-locations: classpath:sql/init.sql,classpath:sql/chat_tables.sql
-      data-locations: classpath:sql/init_chat_data.sql
+      # 关闭数据脚本初始化（不加载任何数据）
+      # data-locations: classpath:sql/init_chat_data.sql
       continue-on-error: false
   jpa:
     hibernate:

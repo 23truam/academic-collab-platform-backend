@@ -16,6 +16,34 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     FOREIGN KEY (receiver_id) REFERENCES users(id)
 );
 
+-- 兼容已存在但缺少 client_msg_id 字段的历史库：检测并补齐列与唯一索引
+SET @exists_client_msg_id := (
+    SELECT COUNT(1)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'chat_messages'
+      AND COLUMN_NAME = 'client_msg_id'
+);
+SET @sql_add_client_msg_id := IF(@exists_client_msg_id = 0,
+    'ALTER TABLE chat_messages ADD COLUMN client_msg_id VARCHAR(64) NULL COMMENT ''客户端生成的幂等ID'' AFTER is_read',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql_add_client_msg_id; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 若唯一索引不存在则创建（基于 sender_id + client_msg_id 幂等约束）
+SET @exists_uniq_sender_client_msg_id := (
+    SELECT COUNT(1)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'chat_messages'
+      AND index_name = 'uniq_sender_client_msg_id'
+);
+SET @sql_add_uniq := IF(@exists_uniq_sender_client_msg_id = 0,
+    'CREATE UNIQUE INDEX uniq_sender_client_msg_id ON chat_messages(sender_id, client_msg_id)',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql_add_uniq; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- 用户在线状态表
 CREATE TABLE IF NOT EXISTS user_online_status (
     user_id BIGINT PRIMARY KEY,

@@ -105,6 +105,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     public ChatMessageResponse handleSendMessage(Long senderId, ChatMessageRequest request) {
         System.out.println("[WebSocket] handleSendMessage 被调用, senderId=" + senderId + ", receiverId=" + request.getReceiverId());
         ChatMessageResponse response=chatService.sendMessage(senderId,request);
+        // 只推送给接收方个人队列
         messagingTemplate.convertAndSendToUser(
                 request.getReceiverId().toString(),
                 "/queue/messages",

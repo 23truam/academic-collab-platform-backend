@@ -14,6 +14,7 @@ import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.util.RedisUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -66,7 +67,7 @@ public class ChatServiceImpl implements ChatService {
         // 幂等插入（基于 senderId + clientMsgId 唯一索引）
         try {
             chatMessageMapper.insert(message);
-        } catch (Exception e) {
+        } catch (DuplicateKeyException e) {
             // 如果违反唯一约束，说明是重复发送，忽略插入并查询已存在记录用于返回
             ChatMessageResponse existed = findByClientMsgId(senderId, request.getClientMsgId());
             if (existed != null) return existed;
