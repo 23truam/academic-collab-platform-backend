@@ -17,7 +17,7 @@ import com.example.academic_collab_platform_backend.service.ChatWebSocketService
 
 @RestController
 @RequestMapping("/api/chat")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "*", exposedHeaders = {"X-Cache"})
 public class ChatController {
 
     @Autowired
@@ -49,7 +49,7 @@ public class ChatController {
     @GetMapping("/history/{userId}")
     public ResponseEntity<?> getChatHistory(
         @PathVariable Long userId,
-        @RequestParam(defaultValue = "50") Integer limit,
+        @RequestParam(defaultValue = "200") Integer limit,
         HttpServletRequest httpRequest
     ) {
         try {
@@ -67,7 +67,7 @@ public class ChatController {
     @GetMapping("/history-with-cache/{userId}")
     public ResponseEntity<?> getChatHistoryWithCache(
         @PathVariable Long userId,
-        @RequestParam(defaultValue = "50") Integer limit,
+        @RequestParam(defaultValue = "200") Integer limit,
         @RequestParam(required = false) Long loginTime,
         HttpServletRequest httpRequest
     ) {
@@ -85,7 +85,10 @@ public class ChatController {
                 }
             }
             Map<String, Object> result = chatService.getChatHistoryWithCache(currentUserId, userId, limit, loginTime);
-            return ResponseEntity.ok(ResponseUtil.success(result));
+            boolean cacheHit = Boolean.TRUE.equals(result.get("cacheHit"));
+            return ResponseEntity.ok()
+                    .header("X-Cache", cacheHit ? "HIT" : "MISS")
+                    .body(ResponseUtil.success(result));
         } catch(Exception e) {
             return ResponseEntity.badRequest().body(ResponseUtil.error(e.getMessage()));
         }

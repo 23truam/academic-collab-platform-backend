@@ -110,16 +110,16 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 request.getReceiverId().toString(),
                 "/queue/messages",
                 response);
-        // 新消息后，仅当接收方未与发送方处于同一活跃会话时，才推送未读统计
+        // 新消息后：
+        // - 若接收方未处于与发送方的同一活跃会话，推送未读统计（保持红点）
+        // - 若接收方正处于与发送方的活跃会话，不再由后端自动标记已读，改由前端在确认为当前会话时主动调用标记接口，避免误判
         Long activePeer = activePeerMap.get(request.getReceiverId());
         if (activePeer == null || !activePeer.equals(senderId)) {
             System.out.println("[WebSocket] 推送未读统计: receiverId=" + request.getReceiverId() + ", activePeer=" + activePeer + ", senderId=" + senderId);
             pushUnreadCount(request.getReceiverId());
             pushUnreadMap(request.getReceiverId());
         } else {
-            // 如果接收方正处于与发送方的活跃会话，直接标记为已读，避免未读红点闪烁
-            System.out.println("[WebSocket] 抑制未读推送并标记已读: receiverId=" + request.getReceiverId() + ", activePeer=" + activePeer + ", senderId=" + senderId);
-            chatService.markMessagesAsRead(senderId, request.getReceiverId());
+            System.out.println("[WebSocket] 接收方处于与发送方的活跃会话，由前端明确ACK后再标记已读");
         }
         return response;
     }

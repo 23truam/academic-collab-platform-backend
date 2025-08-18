@@ -10,6 +10,28 @@
         LIMIT #{limit}
     </select>
 
+    <select id="getChatHistoryBeforeTime" resultType="com.example.academic_collab_platform_backend.model.ChatMessage">
+        SELECT * FROM chat_messages
+        WHERE (
+            (sender_id = #{user1Id} AND receiver_id = #{user2Id})
+            OR (sender_id = #{user2Id} AND receiver_id = #{user1Id})
+        )
+        AND create_time &lt;= #{beforeTime}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="getChatHistoryAfterTime" resultType="com.example.academic_collab_platform_backend.model.ChatMessage">
+        SELECT * FROM chat_messages
+        WHERE (
+            (sender_id = #{user1Id} AND receiver_id = #{user2Id})
+            OR (sender_id = #{user2Id} AND receiver_id = #{user1Id})
+        )
+        AND create_time &gt; #{afterTime}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="getUnreadMessageCount" resultType="java.lang.Integer">
         SELECT COUNT(*) FROM chat_messages 
         WHERE receiver_id = #{userId} AND is_read = FALSE

@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 @Mapper
 public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
@@ -17,6 +18,22 @@ public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
     List<ChatMessage> getChatHistory(@Param("user1Id") Long user1Id, 
                                     @Param("user2Id") Long user2Id, 
                                     @Param("limit") Integer limit);
+
+    /**
+     * 获取两个用户之间在指定时间之前的聊天记录（倒序，限制条数）
+     */
+    List<ChatMessage> getChatHistoryBeforeTime(@Param("user1Id") Long user1Id,
+                                               @Param("user2Id") Long user2Id,
+                                               @Param("beforeTime") LocalDateTime beforeTime,
+                                               @Param("limit") Integer limit);
+
+    /**
+     * 获取两个用户之间在指定时间之后的聊天记录（含边界，倒序，限制条数）
+     */
+    List<ChatMessage> getChatHistoryAfterTime(@Param("user1Id") Long user1Id,
+                                              @Param("user2Id") Long user2Id,
+                                              @Param("afterTime") LocalDateTime afterTime,
+                                              @Param("limit") Integer limit);
     
     /**
      * 获取用户的未读消息数
