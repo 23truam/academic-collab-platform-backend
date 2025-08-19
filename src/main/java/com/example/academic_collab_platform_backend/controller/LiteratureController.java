@@ -25,7 +25,7 @@ public class LiteratureController {
      * @return 检索到的论文列表
      */
     @PostMapping("/search")
-    public ResponseEntity<List<Paper>> searchLiterature(@RequestBody com.example.academic_collab_platform_backend.service.LiteratureService.SearchRequest request) {
+    public ResponseEntity<List<Paper>> searchLiterature(@RequestBody LiteratureService.SearchRequest request) {
         try {
             List<Paper> papers = literatureService.searchPapersByKeyword(request.getQuery());
             return ResponseEntity.ok(papers);

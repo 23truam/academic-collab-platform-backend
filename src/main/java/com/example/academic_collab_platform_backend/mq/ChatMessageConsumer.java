@@ -1,6 +1,7 @@
 package com.example.academic_collab_platform_backend.mq;
 
 import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
+import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
 import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.util.RedisUtil;
 import com.rabbitmq.client.Channel;
@@ -11,6 +12,7 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -62,10 +64,10 @@ public class ChatMessageConsumer {
     public void onMessage(ChatMessageRequest request, Message message, Channel channel) throws Exception {
         // 1. 获取消息元数据
         long tag = message.getMessageProperties().getDeliveryTag();           // 消息标签（用于ACK/NACK）
-        String messageId = (String) message.getMessageProperties().getHeaders().get("x-message-id");  // 消息唯一ID
+        String messageId = (String) message.getMessageProperties().getHeaders().get("x-message-id");  // 客户端消息ID（clientMsgId）
         String dedupKey = "chat:msg:" + messageId;  // Redis去重键
 
-        log.info("📨 [RabbitMQ] Received message - MessageId: {}, DeliveryTag: {}, SenderId: {}, ReceiverId: {}, Content: {}", 
+        log.info("📨 [RabbitMQ] Received message - ClientMsgId: {}, DeliveryTag: {}, SenderId: {}, ReceiverId: {}, Content: {}", 
                 messageId, tag, request.getSenderId(), request.getReceiverId(),
                 request.getContent().length() > 50 ? request.getContent().substring(0, 50) + "..." : request.getContent());
 
@@ -78,31 +80,32 @@ public class ChatMessageConsumer {
                 
                 if (Boolean.FALSE.equals(firstTime)) {
                     // 消息已经处理过，直接确认并跳过处理
-                    log.info("🔄 [RabbitMQ] Message already processed (idempotent) - MessageId: {}, skipping", messageId);
+                    log.info("🔄 [RabbitMQ] Message already processed (idempotent) - ClientMsgId: {}, skipping", messageId);
                     channel.basicAck(tag, false);  // 确认消息（不重新入队）
                     return;
                 }
             }
 
-            log.info("⚡ [RabbitMQ] Processing message - MessageId: {}", messageId);
-            
+            log.info("⚡ [RabbitMQ] Processing message - ClientMsgId: {}", messageId);
+
+
             // 3. 调用业务处理逻辑
-            // 这里会执行：消息存库 + WebSocket推送 + 缓存更新
+            // 这里会执行：消息存库 + WebSocket推送
             chatService.processAndDispatch(request);
             
             // 4. 处理成功，手动确认消息
             channel.basicAck(tag, false);  // false表示只确认当前消息，不批量确认
-            log.info("✅ [RabbitMQ] Message processed successfully - MessageId: {}, DeliveryTag: {}", messageId, tag);
+            log.info("✅ [RabbitMQ] Message processed successfully - ClientMsgId: {}, DeliveryTag: {}", messageId, tag);
             
         } catch (Exception ex) {
             // 5. 处理失败的异常处理
-            log.error("❌ [RabbitMQ] Failed to process message - MessageId: {}, DeliveryTag: {}, Error: {}", 
+            log.error("❌ [RabbitMQ] Failed to process message - ClientMsgId: {}, DeliveryTag: {}, Error: {}", 
                     messageId, tag, ex.getMessage(), ex);
             
             // 拒绝消息并发送到死信队列
             // 参数说明：tag=消息标签, multiple=false不批量, requeue=false不重新入队
             channel.basicNack(tag, false, false);
-            log.warn("💀 [RabbitMQ] Message sent to dead letter queue - MessageId: {}", messageId);
+            log.warn("💀 [RabbitMQ] Message sent to dead letter queue - ClientMsgId: {}", messageId);
             
             // 重新抛出异常，让Spring知道处理失败（可选，用于监控统计）
             throw ex;

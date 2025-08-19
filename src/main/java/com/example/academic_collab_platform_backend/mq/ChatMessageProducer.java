@@ -1,6 +1,7 @@
 package com.example.academic_collab_platform_backend.mq;
 
 import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
+import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -47,17 +48,24 @@ public class ChatMessageProducer {
      * @param request 聊天消息请求对象（包含发送者、接收者、内容等）
      */
     public void publish(ChatMessageRequest request) {
-        // 1. 生成消息唯一ID，用于消费端幂等性控制
-        String messageId = UUID.randomUUID().toString();
+        // 1. 使用客户端生成的消息ID，避免重复生成UUID
+        String messageId = request.getClientMsgId();
         
-        log.info("🚀 [RabbitMQ] Publishing message to queue - MessageId: {}, SenderId: {}, ReceiverId: {}, Content: {}", 
+        // 如果客户端没有提供ID，则生成一个（兜底保护）
+        if (messageId == null || messageId.trim().isEmpty()) {
+            messageId = UUID.randomUUID().toString();
+            log.warn("⚠️ [RabbitMQ] Client message ID is missing, generated new ID: {}", messageId);
+        }
+        
+        log.info("🚀 [RabbitMQ] Publishing message to queue - ClientMsgId: {}, SenderId: {}, ReceiverId: {}, Content: {}", 
                 messageId, request.getSenderId(), request.getReceiverId(), 
                 request.getContent().length() > 50 ? request.getContent().substring(0, 50) + "..." : request.getContent());
         
-        // 2. 设置消息属性：消息ID + 持久化
+        // 2. 设置消息属性：使用客户端消息ID + 持久化
+        final String finalMessageId = messageId;  // lambda表达式需要final变量
         MessagePostProcessor headers = message -> {
-            // 设置消息唯一ID到消息头，消费者可以用它来做幂等性检查
-            message.getMessageProperties().setHeader("x-message-id", messageId);
+            // 使用客户端提供的消息ID，保持端到端的幂等性
+            message.getMessageProperties().setHeader("x-message-id", finalMessageId);
             
             // 设置消息持久化：即使RabbitMQ重启，消息也不会丢失
             message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
@@ -74,12 +82,12 @@ public class ChatMessageProducer {
                     headers                            // 消息属性处理器
             );
             
-            log.info("✅ [RabbitMQ] Message published successfully - Exchange: {}, RoutingKey: {}, MessageId: {}", 
-                    ChatMQConstants.CHAT_EXCHANGE, ChatMQConstants.CHAT_ROUTING_KEY, messageId);
+            log.info("✅ [RabbitMQ] Message published successfully - Exchange: {}, RoutingKey: {}, ClientMsgId: {}", 
+                    ChatMQConstants.CHAT_EXCHANGE, ChatMQConstants.CHAT_ROUTING_KEY, finalMessageId);
                     
         } catch (Exception e) {
             // 发送失败时记录详细错误信息，并重新抛出异常
-            log.error("❌ [RabbitMQ] Failed to publish message - MessageId: {}, Error: {}", messageId, e.getMessage(), e);
+            log.error("❌ [RabbitMQ] Failed to publish message - ClientMsgId: {}, Error: {}", finalMessageId, e.getMessage(), e);
             throw e;  // 重新抛出，让调用方知道发送失败
         }
     }
