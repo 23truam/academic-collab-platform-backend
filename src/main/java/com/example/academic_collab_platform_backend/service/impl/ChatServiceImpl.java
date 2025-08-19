@@ -12,7 +12,11 @@ import com.example.academic_collab_platform_backend.model.User;
 import com.example.academic_collab_platform_backend.model.UserOnlineStatus;
 import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.util.RedisUtil;
+import com.example.academic_collab_platform_backend.mq.ChatMessageProducer;
+import com.example.academic_collab_platform_backend.event.ChatMessagePushEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DuplicateKeyException;
 import org.slf4j.Logger;
@@ -47,6 +51,15 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private RedisUtil redisUtil;
 
+    @Autowired
+    private ChatMessageProducer chatMessageProducer;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    @Value("${chat.messaging.mode:direct}")
+    private String messagingMode;
+
     // 缓存过期时间：1小时
     private static final long CACHE_EXPIRE_HOURS = 1;
 
@@ -59,27 +72,32 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public ChatMessageResponse sendMessage(Long senderId, ChatMessageRequest request) {
-        ChatMessage message = ChatMessage.builder()
-                .senderId(senderId)
-                .receiverId(request.getReceiverId())
-                .content(request.getContent())
-                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
-                .isRead(false)
-                .clientMsgId(request.getClientMsgId())
-                .createTime(LocalDateTime.now())
-                .updateTime(LocalDateTime.now()).build();
-
-        // 幂等插入（基于 senderId + clientMsgId 唯一索引）
-        try {
-            chatMessageMapper.insert(message);
-        } catch (DuplicateKeyException e) {
-            // 如果违反唯一约束，说明是重复发送，忽略插入并查询已存在记录用于返回
-            ChatMessageResponse existed = findByClientMsgId(senderId, request.getClientMsgId());
-            if (existed != null) return existed;
-            throw e;
+        // 如果是rabbit模式，则发送到MQ队列
+        if ("rabbit".equalsIgnoreCase(messagingMode)) {
+            log.info("🐰 [ChatService] Using RabbitMQ mode - SenderId: {}, ReceiverId: {}, ClientMsgId: {}", 
+                    senderId, request.getReceiverId(), request.getClientMsgId());
+            
+            // 设置发送者ID到请求中
+            request.setSenderId(senderId);
+            chatMessageProducer.publish(request);
+            
+            // 返回已入队响应
+            ChatMessageResponse response = new ChatMessageResponse();
+            response.setSenderId(senderId);
+            response.setReceiverId(request.getReceiverId());
+            response.setContent(request.getContent());
+            response.setMessageType(request.getMessageType() != null ? request.getMessageType() : "TEXT");
+            response.setClientMsgId(request.getClientMsgId());
+            response.setCreateTime(LocalDateTime.now());
+            
+            log.info("✅ [ChatService] Message queued successfully (RabbitMQ mode) - ClientMsgId: {}", request.getClientMsgId());
+            return response;
         }
-
-        return convertToResponse(message);
+        
+        // direct模式：原有的直发逻辑
+        log.info("🔄 [ChatService] Using Direct mode - SenderId: {}, ReceiverId: {}, ClientMsgId: {}", 
+                senderId, request.getReceiverId(), request.getClientMsgId());
+        return processAndDispatchInternal(senderId, request);
     }
 
     private ChatMessageResponse findByClientMsgId(Long senderId, String clientMsgId) {
@@ -351,5 +369,62 @@ public class ChatServiceImpl implements ChatService {
                 redisUtil.delete(cacheKey);
             }
         }
+    }
+
+    @Override
+    public void processAndDispatch(ChatMessageRequest request) {
+        // MQ消费者调用的处理方法
+        log.info("📮 [ChatService] Processing message from MQ - SenderId: {}, ReceiverId: {}, ClientMsgId: {}", 
+                request.getSenderId(), request.getReceiverId(), request.getClientMsgId());
+        
+        ChatMessageResponse response = processAndDispatchInternal(request.getSenderId(), request);
+        
+        log.info("✅ [ChatService] Message processed and dispatched successfully from MQ - MessageId: {}, ClientMsgId: {}", 
+                response.getId(), request.getClientMsgId());
+    }
+
+    /**
+     * 处理并分发消息的内部方法（复用原有逻辑）
+     * @param senderId 发送者ID
+     * @param request 消息请求
+     * @return 消息响应
+     */
+    private ChatMessageResponse processAndDispatchInternal(Long senderId, ChatMessageRequest request) {
+        ChatMessage message = ChatMessage.builder()
+                .senderId(senderId)
+                .receiverId(request.getReceiverId())
+                .content(request.getContent())
+                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
+                .isRead(false)
+                .clientMsgId(request.getClientMsgId())
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now()).build();
+
+        // 幂等插入（基于 senderId + clientMsgId 唯一索引）
+        try {
+            chatMessageMapper.insert(message);
+        } catch (DuplicateKeyException e) {
+            // 如果违反唯一约束，说明是重复发送，忽略插入并查询已存在记录用于返回
+            ChatMessageResponse existed = findByClientMsgId(senderId, request.getClientMsgId());
+            if (existed != null) return existed;
+            throw e;
+        }
+
+        ChatMessageResponse response = convertToResponse(message);
+        
+        // 通过事件发布推送消息给接收者
+        try {
+            eventPublisher.publishEvent(new ChatMessagePushEvent(this, request.getReceiverId(), response));
+            log.info("📨 [ChatService] Published message push event - ReceiverId: {}, MessageId: {}", 
+                    request.getReceiverId(), response.getId());
+        } catch (Exception e) {
+            log.error("❌ [ChatService] Failed to publish message push event for user {}: {}", 
+                    request.getReceiverId(), e.getMessage());
+        }
+        
+        // 更新缓存
+        updateChatCacheAfterSend(senderId, request.getReceiverId(), response);
+
+        return response;
     }
 } 

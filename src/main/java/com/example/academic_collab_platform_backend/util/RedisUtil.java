@@ -247,4 +247,27 @@ public class RedisUtil {
         Long size = redisTemplate.opsForList().size(key);
         return size != null ? size : 0;
     }
-} 
+
+    /**
+     * 仅当key不存在时设置值，带过期时间
+     * @param key 缓存key
+     * @param value 缓存值
+     * @param timeout 过期时间
+     * @param unit 时间单位
+     * @return 是否设置成功（true=首次设置，false=key已存在）
+     */
+    public Boolean setIfAbsent(String key, String value, long timeout, TimeUnit unit) {
+        return redisTemplate.opsForValue().setIfAbsent(key, value, timeout, unit);
+    }
+
+    /**
+     * 仅当key不存在时设置值（不带过期时间）
+     * @param key 缓存key
+     * @param value 缓存值
+     * @return 是否设置成功（true=首次设置，false=key已存在）
+     */
+    public Boolean setIfAbsent(String key, String value) {
+        return redisTemplate.opsForValue().setIfAbsent(key, value);
+    }
+
+}

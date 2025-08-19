@@ -54,4 +54,9 @@ public interface ChatService {
      * 更新用户在线状态
      */
     void updateUserOnlineStatus(Long userId, Boolean isOnline, String sessionId);
+    
+    /**
+     * 处理并分发消息（供MQ消费者调用）
+     */
+    void processAndDispatch(ChatMessageRequest request);
 } 

@@ -37,6 +37,23 @@ spring:
         min-idle: 0
         # 获取连接最大等待时间（毫秒）
         max-wait: -1ms
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    # 生产端可靠性
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 20
+        concurrency: 2
+        max-concurrency: 8
 
 mybatis:
   #mapper配置文件
@@ -59,3 +76,7 @@ server:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+
+chat:
+  messaging:
+    mode: rabbit # rabbit | direct（开关，便于灰度/回退）

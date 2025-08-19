@@ -84,6 +84,9 @@ public class ChatWebSocketController {
     }
 
 
+    @Autowired
+    private ChatService chatService;
+
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload ChatMessageRequest chatMessageRequest, SimpMessageHeaderAccessor headerAccessor){
         String currentUserId = headerAccessor.getSessionAttributes().get("userId").toString();
@@ -91,8 +94,10 @@ public class ChatWebSocketController {
         Long userId = currentUserId != null ? Long.valueOf(currentUserId) : null;
         if(userId == null)
             throw new RuntimeException("未认证用户，无法发送消息!");
-        chatWebSocketService.handleSendMessage(userId, chatMessageRequest);
-        // 不再return，也不@SendTo
+        
+        // 直接调用ChatService，避免循环依赖
+        chatService.sendMessage(userId, chatMessageRequest);
+        // 不再return，也不@SendTo，消息推送通过事件机制处理
     }
 
 

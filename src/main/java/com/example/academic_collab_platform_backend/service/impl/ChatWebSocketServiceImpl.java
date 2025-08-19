@@ -5,6 +5,7 @@ import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
 import com.example.academic_collab_platform_backend.dto.UserListDTO;
 import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.service.ChatWebSocketService;
+import com.example.academic_collab_platform_backend.event.ChatMessagePushEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -101,28 +102,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         pushUnreadMap(userId);
     }
 
-    @Override
-    public ChatMessageResponse handleSendMessage(Long senderId, ChatMessageRequest request) {
-        System.out.println("[WebSocket] handleSendMessage 被调用, senderId=" + senderId + ", receiverId=" + request.getReceiverId());
-        ChatMessageResponse response=chatService.sendMessage(senderId,request);
-        // 只推送给接收方个人队列
-        messagingTemplate.convertAndSendToUser(
-                request.getReceiverId().toString(),
-                "/queue/messages",
-                response);
-        // 新消息后：
-        // - 若接收方未处于与发送方的同一活跃会话，推送未读统计（保持红点）
-        // - 若接收方正处于与发送方的活跃会话，不再由后端自动标记已读，改由前端在确认为当前会话时主动调用标记接口，避免误判
-        Long activePeer = activePeerMap.get(request.getReceiverId());
-        if (activePeer == null || !activePeer.equals(senderId)) {
-            System.out.println("[WebSocket] 推送未读统计: receiverId=" + request.getReceiverId() + ", activePeer=" + activePeer + ", senderId=" + senderId);
-            pushUnreadCount(request.getReceiverId());
-            pushUnreadMap(request.getReceiverId());
-        } else {
-            System.out.println("[WebSocket] 接收方处于与发送方的活跃会话，由前端明确ACK后再标记已读");
-        }
-        return response;
-    }
+
 
     // 推送用户状态变更
     @Override
@@ -130,6 +110,33 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         System.out.println("[WebSocket] 推送用户状态: userId=" + userId + ", isOnline=" + isOnline);
         // 只推送userId和isOnline，前端可自行更新
         messagingTemplate.convertAndSend("/topic/user-status", new UserListDTO(userId, null, isOnline));
+    }
+
+    // 直接推送消息给指定用户（供MQ消费者调用）
+    @Override
+    public void sendMessageToUser(Long receiverId, ChatMessageResponse message) {
+        System.out.println("[WebSocket] 直接推送消息: receiverId=" + receiverId + ", messageId=" + message.getId());
+        
+        // 推送消息到用户个人队列
+        messagingTemplate.convertAndSendToUser(
+                receiverId.toString(),
+                "/queue/messages",
+                message);
+        
+        // 推送未读统计更新
+        // 注意：这里不检查活跃会话，因为MQ异步处理时无法准确判断用户当前状态
+        // 由前端在接收到消息时决定是否需要标记已读
+        pushUnreadCount(receiverId);
+        pushUnreadMap(receiverId);
+        
+        System.out.println("[WebSocket] 消息推送完成: receiverId=" + receiverId);
+    }
+
+    // 监听消息推送事件
+    @EventListener
+    public void handleChatMessagePushEvent(ChatMessagePushEvent event) {
+        System.out.println("[WebSocket] 收到消息推送事件: receiverId=" + event.getReceiverId() + ", messageId=" + event.getMessage().getId());
+        sendMessageToUser(event.getReceiverId(), event.getMessage());
     }
 
     // 监听WebSocket断开事件，自动推送下线
