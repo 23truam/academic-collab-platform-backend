@@ -57,9 +57,15 @@ public class ChatMessageProducer {
             log.warn("⚠️ [RabbitMQ] Client message ID is missing, generated new ID: {}", messageId);
         }
         
-        log.info("🚀 [RabbitMQ] Publishing message to queue - ClientMsgId: {}, SenderId: {}, ReceiverId: {}, Content: {}", 
-                messageId, request.getSenderId(), request.getReceiverId(), 
-                request.getContent().length() > 50 ? request.getContent().substring(0, 50) + "..." : request.getContent());
+        // 🔧 安全处理日志输出，避免null异常
+        String contentPreview = "null";
+        if (request.getContent() != null) {
+            contentPreview = request.getContent().length() > 50 ? 
+                request.getContent().substring(0, 50) + "..." : request.getContent();
+        }
+        
+        log.info("🚀 [RabbitMQ] Publishing message to queue - ClientMsgId: {}, SenderId: {}, ReceiverId: {}, Content: {}, MessageType: {}", 
+                messageId, request.getSenderId(), request.getReceiverId(), contentPreview, request.getMessageType());
         
         // 2. 设置消息属性：使用客户端消息ID + 持久化
         final String finalMessageId = messageId;  // lambda表达式需要final变量

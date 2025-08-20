@@ -27,7 +27,14 @@ public class UserStatusController {
     public ResponseEntity<?> setOnline(@RequestBody Map<String, Boolean> body) {
         Long userId = userContextUtil.getCurrentUserId();
         Boolean online = body.get("isOnline");
-        // 统一通过业务服务写入，确保首次登录也会插入记录
+        
+        // 🆕 添加null检查和默认值
+        if (online == null) {
+            System.out.println("⚠️ [UserStatus] 前端传递的isOnline为null，默认设置为false");
+            online = false;  // 默认为离线
+        }
+        
+        System.out.println("🔄 [UserStatus] 更新用户状态: userId=" + userId + ", isOnline=" + online);
         chatService.updateUserOnlineStatus(userId, online, null);
         return ResponseEntity.ok().build();
     }

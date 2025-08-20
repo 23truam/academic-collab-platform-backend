@@ -33,6 +33,9 @@ import java.util.UUID;
 @Slf4j
 public class SearchHistoryServiceImpl implements SearchHistoryService {
 
+    // 🔧 手动添加log变量（防止Lombok问题）
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SearchHistoryServiceImpl.class);
+
     @Autowired
     private SearchHistoryMapper searchHistoryMapper;
 

@@ -50,4 +50,44 @@
         WHERE sender_id = #{senderId} AND receiver_id = #{receiverId} AND is_read = FALSE
     </update>
 
+    <!-- 🆕 第二阶段：离线消息查询 -->
+    <select id="getOfflineMessages" resultType="com.example.academic_collab_platform_backend.model.ChatMessage">
+        SELECT id, sender_id, receiver_id, content, message_type, is_read, client_msg_id, create_time, update_time
+        FROM chat_messages 
+        WHERE receiver_id = #{userId}
+          AND create_time > #{lastLogoutTime}
+          AND is_read = false
+        ORDER BY create_time ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 🆕 第三阶段：批量操作优化 -->
+    <update id="batchMarkAsRead">
+        UPDATE chat_messages 
+        SET is_read = TRUE, update_time = NOW()
+        WHERE receiver_id = #{userId} 
+          AND id IN
+        <foreach collection="messageIds" item="messageId" open="(" separator="," close=")">
+            #{messageId}
+        </foreach>
+          AND is_read = FALSE
+    </update>
+
+    <select id="selectBatchByIds" resultType="com.example.academic_collab_platform_backend.model.ChatMessage">
+        SELECT id, sender_id, receiver_id, content, message_type, is_read, client_msg_id, create_time, update_time
+        FROM chat_messages 
+        WHERE id IN
+        <foreach collection="messageIds" item="messageId" open="(" separator="," close=")">
+            #{messageId}
+        </foreach>
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="countMessagesByTimeRange" resultType="java.lang.Integer">
+        SELECT COUNT(*) 
+        FROM chat_messages 
+        WHERE receiver_id = #{userId}
+          AND create_time BETWEEN #{startTime} AND #{endTime}
+    </select>
+
 </mapper> 

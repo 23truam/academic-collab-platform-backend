@@ -1,11 +1,14 @@
 package com.example.academic_collab_platform_backend.service.impl;
 
-import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.example.academic_collab_platform_backend.dto.ChatMessageResponse;
+import com.example.academic_collab_platform_backend.dto.ChatMessageRequest;
 import com.example.academic_collab_platform_backend.dto.UserListDTO;
+import com.example.academic_collab_platform_backend.model.UserOnlineStatus;
 import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.service.ChatWebSocketService;
 import com.example.academic_collab_platform_backend.event.ChatMessagePushEvent;
+import com.example.academic_collab_platform_backend.mq.ChatMessageProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -23,6 +26,8 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     private ChatService chatService;
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+    @Autowired
+    private ChatMessageProducer chatMessageProducer;  // 🆕 注入消息生产者
 
     // 维护用户当前活跃会话对端：key=用户ID，value=正在聊天的对端用户ID
     private static final Map<Long, Long> activePeerMap = new ConcurrentHashMap<>();
@@ -77,14 +82,45 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     }
 
     @Override
-    public void handleUserConnect(Long userId,String sessionId){
-        System.out.println("[WebSocket] 用户上线: " + userId + ", sessionId: " + sessionId);
-        chatService.updateUserOnlineStatus(userId,true,sessionId);
-        // 推送上线
+    public void handleUserConnect(Long userId, String sessionId) {
+        System.out.println("🟢 [Online] 用户上线: userId=" + userId + ", sessionId=" + sessionId);
+        
+        // 🆕 第二阶段：发送离线消息拉取请求到RabbitMQ
+        triggerOfflineMessagePull(userId, sessionId);
+        
+        // 原有逻辑保持不变
+        chatService.updateUserOnlineStatus(userId, true, sessionId);
         broadcastUserStatus(userId, true);
-        // 用户上线时推送未读消息数
         pushUnreadCount(userId);
         pushUnreadMap(userId);
+    }
+    
+    // 🆕 第二阶段：触发离线消息拉取
+    private void triggerOfflineMessagePull(Long userId, String sessionId) {
+        try {
+            // 1. 获取用户上次下线时间
+            UserOnlineStatus status = chatService.getUserOnlineStatus(userId);
+            if (status == null || status.getLastLogoutTime() == null) {
+                System.out.println("📭 [Offline] 无需拉取离线消息: userId=" + userId + " (无下线时间记录)");
+                return;
+            }
+            
+            // 2. 创建离线消息拉取请求
+            ChatMessageRequest offlineRequest = ChatMessageRequest.createOfflinePullRequest(
+                userId, status.getLastLogoutTime(), sessionId
+            );
+            
+            // 3. 🎯 发送到现有的chat消息队列（复用现有基础设施）
+            chatMessageProducer.publish(offlineRequest);
+            
+            System.out.println("📨 [Offline] 离线消息拉取请求已发送: userId=" + userId + 
+                ", lastLogoutTime=" + status.getLastLogoutTime() + 
+                ", clientMsgId=" + offlineRequest.getClientMsgId());
+                
+        } catch (Exception e) {
+            System.err.println("❌ [Offline] 离线消息拉取请求发送失败: userId=" + userId + 
+                ", error=" + e.getMessage());
+        }
     }
 
 
@@ -115,21 +151,72 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     // 直接推送消息给指定用户（供MQ消费者调用）
     @Override
     public void sendMessageToUser(Long receiverId, ChatMessageResponse message) {
-        System.out.println("[WebSocket] 直接推送消息: receiverId=" + receiverId + ", messageId=" + message.getId());
+        System.out.println("[WebSocket] 准备推送消息: receiverId=" + receiverId + 
+            ", messageId=" + message.getId() + 
+            ", messageType=" + message.getMessageType());
+        
+        // 🆕 第二阶段：对于离线消息，不需要检查在线状态（因为是拉取时推送）
+        if (!"OFFLINE".equals(message.getMessageType())) {
+            // 🆕 普通消息才检查在线状态
+            if (!isUserOnline(receiverId)) {
+                System.out.println("📴 [Offline] 用户离线，跳过推送: receiverId=" + receiverId + ", messageId=" + message.getId());
+                return;
+            }
+        }
+        
+        // 🆕 第三阶段：根据消息类型选择不同的推送队列
+        String queueSuffix = "OFFLINE".equals(message.getMessageType()) ? 
+            "/queue/offline-messages" : "/queue/messages";
+        
+        System.out.println("[WebSocket] 推送消息到队列: " + queueSuffix + ", receiverId=" + receiverId + 
+            ", messageId=" + message.getId());
         
         // 推送消息到用户个人队列
         messagingTemplate.convertAndSendToUser(
                 receiverId.toString(),
-                "/queue/messages",
+                queueSuffix,
                 message);
         
+        // 🆕 对于离线消息，推送后立即标记为已读（用户现在看到了）
+        if ("OFFLINE".equals(message.getMessageType()) && message.getId() != null) {
+            try {
+                // 标记该条离线消息为已读
+                chatService.markMessagesAsRead(message.getSenderId(), receiverId);
+                System.out.println("📖 [Offline] 离线消息已标记为已读: messageId=" + message.getId());
+            } catch (Exception e) {
+                System.err.println("❌ [Offline] 标记离线消息为已读失败: " + e.getMessage());
+            }
+        }
+        
         // 推送未读统计更新
-        // 注意：这里不检查活跃会话，因为MQ异步处理时无法准确判断用户当前状态
-        // 由前端在接收到消息时决定是否需要标记已读
         pushUnreadCount(receiverId);
         pushUnreadMap(receiverId);
         
-        System.out.println("[WebSocket] 消息推送完成: receiverId=" + receiverId);
+        System.out.println("✅ [WebSocket] 消息推送完成: receiverId=" + receiverId + 
+            ", messageType=" + message.getMessageType());
+    }
+
+    // 🆕 添加在线状态检查方法
+    private boolean isUserOnline(Long userId) {
+        try {
+            UserOnlineStatus status = chatService.getUserOnlineStatus(userId);
+            
+            // 安全的null检查
+            boolean isOnline = status != null && 
+                              status.getIsOnline() != null && 
+                              Boolean.TRUE.equals(status.getIsOnline());
+            
+            System.out.println("🔍 [OnlineCheck] 用户在线状态检查: userId=" + userId + 
+                              ", status=" + (status != null ? "存在" : "不存在") + 
+                              ", isOnline=" + (status != null ? status.getIsOnline() : "null") + 
+                              ", 最终判定=" + isOnline);
+            
+            return isOnline;
+        } catch (Exception e) {
+            System.err.println("❌ [OnlineCheck] 状态检查异常: userId=" + userId + ", error=" + e.getMessage());
+            // 异常时默认认为离线，避免无效推送
+            return false;
+        }
     }
 
     // 监听消息推送事件

@@ -67,5 +67,9 @@ public class Paper {
     // 前端期望的authors数组（虚拟字段，不映射数据库）
     @TableField(exist = false)
     private List<String> authorsList;
+    
+    // 🔧 添加缺少的getter/setter方法
+    public List<String> getAuthorsList() { return authorsList; }
+    public void setAuthorsList(List<String> authorsList) { this.authorsList = authorsList; }
 }
 

@@ -59,4 +59,31 @@ public interface ChatService {
      * 处理并分发消息（供MQ消费者调用）
      */
     void processAndDispatch(ChatMessageRequest request);
+    
+    /**
+     * 获取用户在线状态
+     */
+    com.example.academic_collab_platform_backend.model.UserOnlineStatus getUserOnlineStatus(Long userId);
+    
+    // 🆕 第二阶段：离线消息处理
+    /**
+     * 获取用户离线期间的消息
+     */
+    List<ChatMessageResponse> getOfflineMessages(Long userId, java.time.LocalDateTime lastLogoutTime, Integer limit);
+    
+    /**
+     * 处理离线消息拉取请求
+     */
+    void processOfflineMessagePull(ChatMessageRequest request);
+    
+    // 🆕 第三阶段：监控和性能优化
+    /**
+     * 获取离线消息处理统计
+     */
+    Map<String, Object> getOfflineMessageStats(Long userId);
+    
+    /**
+     * 批量标记消息为已读（优化版）
+     */
+    void batchMarkMessagesAsRead(Long userId, List<Long> messageIds);
 } 

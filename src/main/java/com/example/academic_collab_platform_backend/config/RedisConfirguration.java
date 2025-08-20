@@ -22,6 +22,9 @@ import java.time.Duration;
 @Slf4j
 public class RedisConfirguration {
 
+    // 🔧 手动添加log变量（防止Lombok问题）
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RedisConfirguration.class);
+
     @Bean
     public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
         log.info("开始创建redis模板对象...");

@@ -43,7 +43,17 @@ public class RabbitMQConfig {
      */
     @Bean
     public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        // 🔧 配置ObjectMapper，确保时间字段正确序列化
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.findAndRegisterModules(); // 自动注册所有可用模块（如JavaTimeModule）
+        mapper.configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        
+        // 🔧 通过构造函数传入ObjectMapper（兼容不同版本的Spring AMQP）
+        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter(mapper);
+        
+        log.info("🔧 [RabbitMQ] Jackson2JsonMessageConverter configured with custom ObjectMapper");
+        return converter;
     }
 
     /**
