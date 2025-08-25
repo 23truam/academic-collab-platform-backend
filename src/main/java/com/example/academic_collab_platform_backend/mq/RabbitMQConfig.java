@@ -29,17 +29,19 @@ public class RabbitMQConfig {
     private static final Logger log = LoggerFactory.getLogger(RabbitMQConfig.class);
 
     /**
-     * AMQP管理器 - 用于声明和管理队列、交换机等
+     * RabbitAdmin管理器 - 用于声明和管理队列、交换机等
+     * 🆕 返回RabbitAdmin具体类型，支持用户队列管理器注入
      */
     @Bean
-    public AmqpAdmin amqpAdmin(ConnectionFactory connectionFactory) {
-        log.info("🔧 [RabbitMQ] Initializing AMQP Admin");
+    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        log.info("🔧 [RabbitMQ] Initializing RabbitAdmin");
         return new RabbitAdmin(connectionFactory);
     }
 
     /**
      * JSON消息转换器 - 将Java对象转换为JSON发送，接收时再转回Java对象
      * 这样可以直接发送ChatMessageRequest对象，无需手动序列化
+     * 🆕 同时作为MessageConverter接口使用，供UserQueueConsumer注入
      */
     @Bean
     public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {

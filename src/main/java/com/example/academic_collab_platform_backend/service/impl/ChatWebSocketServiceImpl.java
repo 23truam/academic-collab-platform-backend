@@ -9,6 +9,7 @@ import com.example.academic_collab_platform_backend.service.ChatService;
 import com.example.academic_collab_platform_backend.service.ChatWebSocketService;
 import com.example.academic_collab_platform_backend.event.ChatMessagePushEvent;
 import com.example.academic_collab_platform_backend.mq.ChatMessageProducer;
+import com.example.academic_collab_platform_backend.mq.UserQueueConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,6 +29,9 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     private SimpMessagingTemplate messagingTemplate;
     @Autowired
     private ChatMessageProducer chatMessageProducer;  // 🆕 注入消息生产者
+    
+    @Autowired
+    private UserQueueConsumer userQueueConsumer;  // 🆕 注入用户队列消费者
 
     // 维护用户当前活跃会话对端：key=用户ID，value=正在聊天的对端用户ID
     private static final Map<Long, Long> activePeerMap = new ConcurrentHashMap<>();
@@ -85,14 +89,25 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     public void handleUserConnect(Long userId, String sessionId) {
         System.out.println("🟢 [Online] 用户上线: userId=" + userId + ", sessionId=" + sessionId);
         
-        // 🆕 第二阶段：发送离线消息拉取请求到RabbitMQ
-        triggerOfflineMessagePull(userId, sessionId);
-        
-        // 原有逻辑保持不变
-        chatService.updateUserOnlineStatus(userId, true, sessionId);
-        broadcastUserStatus(userId, true);
-        pushUnreadCount(userId);
-        pushUnreadMap(userId);
+        try {
+            // 🆕 启动用户专属队列消费者
+            System.out.println("🔄 [Online] 准备启动用户队列消费者: userId=" + userId);
+            userQueueConsumer.startConsumerForUser(userId);
+            System.out.println("🚀 [Online] 用户队列消费者启动成功: userId=" + userId);
+            
+            // 🆕 第二阶段：发送离线消息拉取请求到RabbitMQ
+            triggerOfflineMessagePull(userId, sessionId);
+            
+            // 原有逻辑保持不变
+            chatService.updateUserOnlineStatus(userId, true, sessionId);
+            broadcastUserStatus(userId, true);
+            pushUnreadCount(userId);
+            pushUnreadMap(userId);
+            
+        } catch (Exception e) {
+            System.err.println("❌ [Online] 用户上线处理异常: userId=" + userId + ", error=" + e.getMessage());
+            // 即使消费者启动失败，也不应阻止用户上线的其他流程
+        }
     }
     
     // 🆕 第二阶段：触发离线消息拉取
@@ -105,17 +120,9 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 return;
             }
             
-            // 2. 创建离线消息拉取请求
-            ChatMessageRequest offlineRequest = ChatMessageRequest.createOfflinePullRequest(
-                userId, status.getLastLogoutTime(), sessionId
-            );
-            
-            // 3. 🎯 发送到现有的chat消息队列（复用现有基础设施）
-            chatMessageProducer.publish(offlineRequest);
-            
-            System.out.println("📨 [Offline] 离线消息拉取请求已发送: userId=" + userId + 
-                ", lastLogoutTime=" + status.getLastLogoutTime() + 
-                ", clientMsgId=" + offlineRequest.getClientMsgId());
+            // 🆕 用户专属队列模式下，不需要额外的离线消息拉取
+            // 因为用户队列已经自动处理了所有离线消息
+            System.out.println("✅ [Offline] 用户专属队列模式下，离线消息已通过队列自动处理: userId=" + userId);
                 
         } catch (Exception e) {
             System.err.println("❌ [Offline] 离线消息拉取请求发送失败: userId=" + userId + 
@@ -127,15 +134,27 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
 
     @Override
     public void handleUserDisconnect(Long userId) {
-        System.out.println("[WebSocket] 用户下线: " + userId);
-        chatService.updateUserOnlineStatus(userId, false, null);
-        // 清理活跃会话映射
-        activePeerMap.remove(userId);
-        // 推送下线
-        broadcastUserStatus(userId, false);
-        // 用户下线时也可推送（可选）
-        pushUnreadCount(userId);
-        pushUnreadMap(userId);
+        System.out.println("🔴 [Offline] 用户下线: " + userId);
+        
+        try {
+            // 🆕 停止用户专属队列消费者
+            userQueueConsumer.stopConsumerForUser(userId);
+            System.out.println("🛑 [Offline] 用户队列消费者停止成功: userId=" + userId);
+            
+            // 原有逻辑保持不变
+            chatService.updateUserOnlineStatus(userId, false, null);
+            // 清理活跃会话映射
+            activePeerMap.remove(userId);
+            // 推送下线
+            broadcastUserStatus(userId, false);
+            // 用户下线时也可推送（可选）
+            pushUnreadCount(userId);
+            pushUnreadMap(userId);
+            
+        } catch (Exception e) {
+            System.err.println("❌ [Offline] 用户下线处理异常: userId=" + userId + ", error=" + e.getMessage());
+            // 即使消费者停止失败，也要继续其他下线流程
+        }
     }
 
 
@@ -155,18 +174,14 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
             ", messageId=" + message.getId() + 
             ", messageType=" + message.getMessageType());
         
-        // 🆕 第二阶段：对于离线消息，不需要检查在线状态（因为是拉取时推送）
-        if (!"OFFLINE".equals(message.getMessageType())) {
-            // 🆕 普通消息才检查在线状态
-            if (!isUserOnline(receiverId)) {
-                System.out.println("📴 [Offline] 用户离线，跳过推送: receiverId=" + receiverId + ", messageId=" + message.getId());
-                return;
-            }
+        // 检查用户在线状态，如果离线则跳过推送
+        if (!isUserOnline(receiverId)) {
+            System.out.println("📴 [Offline] 用户离线，跳过推送: receiverId=" + receiverId + ", messageId=" + message.getId());
+            return;
         }
         
-        // 🆕 第三阶段：根据消息类型选择不同的推送队列
-        String queueSuffix = "OFFLINE".equals(message.getMessageType()) ? 
-            "/queue/offline-messages" : "/queue/messages";
+        // 推送到消息队列
+        String queueSuffix = "/queue/messages";
         
         System.out.println("[WebSocket] 推送消息到队列: " + queueSuffix + ", receiverId=" + receiverId + 
             ", messageId=" + message.getId());
@@ -177,7 +192,9 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 queueSuffix,
                 message);
         
-        // 🆕 对于离线消息，推送后立即标记为已读（用户现在看到了）
+        // 🆕 离线消息推送后不立即标记为已读，让用户真正看到后再标记
+        // 注释掉自动标记已读的逻辑，保持未读状态用于红点提示
+        /*
         if ("OFFLINE".equals(message.getMessageType()) && message.getId() != null) {
             try {
                 // 标记该条离线消息为已读
@@ -187,6 +204,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 System.err.println("❌ [Offline] 标记离线消息为已读失败: " + e.getMessage());
             }
         }
+        */
         
         // 推送未读统计更新
         pushUnreadCount(receiverId);

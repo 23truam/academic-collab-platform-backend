@@ -67,17 +67,15 @@ public class ChatController {
     ) {
         try {
             Long currentUserId = getCurrentUserId(httpRequest);
-            // 如果前端未传 loginTime，则默认使用 token 的签发时间作为登录时刻
+            
+            // 🔧 修复时间精度问题：如果前端未传loginTime，使用当前精确时间
+            // 不再依赖JWT的历史时间，确保时间一致性
             if (loginTime == null) {
-                String token = httpRequest.getHeader("Authorization");
-                if (token != null && token.startsWith("Bearer ")) {
-                    token = token.substring(7);
-                }
-                Long issuedAt = jwtUtil.extractIssuedAtEpochMillis(token);
-                if (issuedAt != null) {
-                    loginTime = issuedAt;
-                }
+                // 使用当前精确时间（毫秒）- 与消息创建时间保持一致
+                loginTime = System.currentTimeMillis();
+                // 使用当前精确时间，确保与消息创建时间源一致
             }
+            
             Map<String, Object> result = chatService.getChatHistoryWithCache(currentUserId, userId, limit, loginTime);
             boolean cacheHit = Boolean.TRUE.equals(result.get("cacheHit"));
             return ResponseEntity.ok()

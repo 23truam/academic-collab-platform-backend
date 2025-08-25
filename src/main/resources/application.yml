@@ -80,6 +80,10 @@ server:
 chat:
   messaging:
     mode: rabbit # rabbit | direct（开关，便于灰度/回退）
+  # 🆕 RabbitMQ消息队列模式配置  
+  rabbitmq:
+    mode: user-queue # user-queue | shared-queue（用户专属队列 | 共享队列）
+    # 🔧 切换回用户专属队列模式
     # 🆕 推拉模式配置（第二阶段+第三阶段）
     push-pull:
       enabled: true # 启用推拉混合模式
