@@ -35,7 +35,13 @@ public class ChatController {
         return Long.valueOf(jwtUtil.extractUserId(token));
     }
 
-
+    /**
+     * 发送消息（已废弃，前端请只用WebSocket发送消息）
+     */
+    @PostMapping("/send")
+    public ResponseEntity<?> sendMessage(@RequestBody ChatMessageRequest request,HttpServletRequest httpRequest){
+        return ResponseEntity.badRequest().body(ResponseUtil.error("请使用WebSocket发送消息"));
+    }
 
     /**
      * 获取聊天历史
