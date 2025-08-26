@@ -27,6 +27,8 @@ public class RedisUtil {
         // 注册 Java 8 时间模块
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // 🕰️ 统一设置时区为北京时间
+        objectMapper.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
     }
 
     /**

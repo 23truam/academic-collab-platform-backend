@@ -28,10 +28,10 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
     @Autowired
-    private ChatMessageProducer chatMessageProducer;  // 🆕 注入消息生产者
+    private ChatMessageProducer chatMessageProducer;  //  注入消息生产者
     
     @Autowired
-    private UserQueueConsumer userQueueConsumer;  // 🆕 注入用户队列消费者
+    private UserQueueConsumer userQueueConsumer;  //  注入用户队列消费者
 
     // 维护用户当前活跃会话对端：key=用户ID，value=正在聊天的对端用户ID
     private static final Map<Long, Long> activePeerMap = new ConcurrentHashMap<>();
@@ -68,10 +68,28 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         );
     }
     
+    // 防重复推送的缓存 - 只基于时间间隔防重复，不基于内容
+    private static final Map<Long, Long> lastPushTimeCache = new ConcurrentHashMap<>();
+    private static final long PUSH_INTERVAL_MS = 100; // 100ms内同一用户不重复推送
+    
     @Override
     public void pushUnreadMap(Long userId) {
+        long currentTime = System.currentTimeMillis();
+        
+        // 🔧 修正防重复逻辑：只基于时间间隔，不基于内容
+        // 因为用户可能发送相同内容的消息多次，unreadMap统计应该实时更新
+        Long lastTime = lastPushTimeCache.get(userId);
+        if (lastTime != null && (currentTime - lastTime) < PUSH_INTERVAL_MS) {
+            System.out.println("🚫 [WebSocket] 跳过频繁推送unreadMap: userId=" + userId + 
+                              ", 距离上次推送" + (currentTime - lastTime) + "ms < " + PUSH_INTERVAL_MS + "ms");
+            return;
+        }
+        
         Map<Long, Integer> unreadMap = chatService.getUnreadCountMap(userId);
-        System.out.println("[WebSocket] 推送unreadMap给userId=" + userId + " 内容: " + unreadMap);
+        System.out.println("📊 [WebSocket] 推送unreadMap给userId=" + userId + " 内容: " + unreadMap + 
+                          " 调用者: " + Thread.currentThread().getStackTrace()[2].getMethodName() + 
+                          " 线程: " + Thread.currentThread().getName());
+        
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             String json = objectMapper.writeValueAsString(unreadMap);
@@ -80,8 +98,12 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
                 "/queue/unread-map",
                 json
             );
+            
+            // 只记录推送时间
+            lastPushTimeCache.put(userId, currentTime);
+            
         } catch (Exception e) {
-            System.err.println("[WebSocket] unreadMap序列化失败: " + e.getMessage());
+            System.err.println("❌ [WebSocket] unreadMap序列化失败: " + e.getMessage());
         }
     }
 
@@ -95,12 +117,14 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
             userQueueConsumer.startConsumerForUser(userId);
             System.out.println("🚀 [Online] 用户队列消费者启动成功: userId=" + userId);
             
-            // 🆕 第二阶段：发送离线消息拉取请求到RabbitMQ
-            triggerOfflineMessagePull(userId, sessionId);
+
             
             // 原有逻辑保持不变
             chatService.updateUserOnlineStatus(userId, true, sessionId);
             broadcastUserStatus(userId, true);
+            
+            // 🔧 减少推送频率：用户上线时只推送一次
+            System.out.println("🔄 [Online] 推送用户上线未读统计: userId=" + userId);
             pushUnreadCount(userId);
             pushUnreadMap(userId);
             
@@ -110,25 +134,7 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         }
     }
     
-    // 🆕 第二阶段：触发离线消息拉取
-    private void triggerOfflineMessagePull(Long userId, String sessionId) {
-        try {
-            // 1. 获取用户上次下线时间
-            UserOnlineStatus status = chatService.getUserOnlineStatus(userId);
-            if (status == null || status.getLastLogoutTime() == null) {
-                System.out.println("📭 [Offline] 无需拉取离线消息: userId=" + userId + " (无下线时间记录)");
-                return;
-            }
-            
-            // 🆕 用户专属队列模式下，不需要额外的离线消息拉取
-            // 因为用户队列已经自动处理了所有离线消息
-            System.out.println("✅ [Offline] 用户专属队列模式下，离线消息已通过队列自动处理: userId=" + userId);
-                
-        } catch (Exception e) {
-            System.err.println("❌ [Offline] 离线消息拉取请求发送失败: userId=" + userId + 
-                ", error=" + e.getMessage());
-        }
-    }
+
 
 
 
@@ -137,19 +143,18 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
         System.out.println("🔴 [Offline] 用户下线: " + userId);
         
         try {
-            // 🆕 停止用户专属队列消费者
+            //停止用户专属队列消费者
             userQueueConsumer.stopConsumerForUser(userId);
             System.out.println("🛑 [Offline] 用户队列消费者停止成功: userId=" + userId);
-            
-            // 原有逻辑保持不变
             chatService.updateUserOnlineStatus(userId, false, null);
             // 清理活跃会话映射
             activePeerMap.remove(userId);
             // 推送下线
             broadcastUserStatus(userId, false);
-            // 用户下线时也可推送（可选）
-            pushUnreadCount(userId);
-            pushUnreadMap(userId);
+            // 🔧 优化：用户下线时不推送未读统计（因为用户已经离线）
+            // pushUnreadCount(userId);
+            // pushUnreadMap(userId);
+            System.out.println("🔄 [Offline] 用户下线，跳过未读统计推送: userId=" + userId);
             
         } catch (Exception e) {
             System.err.println("❌ [Offline] 用户下线处理异常: userId=" + userId + ", error=" + e.getMessage());
@@ -174,9 +179,15 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
             ", messageId=" + message.getId() + 
             ", messageType=" + message.getMessageType());
         
-        // 检查用户在线状态，如果离线则跳过推送
-        if (!isUserOnline(receiverId)) {
-            System.out.println("📴 [Offline] 用户离线，跳过推送: receiverId=" + receiverId + ", messageId=" + message.getId());
+        // 🔧 修复：始终更新未读统计，不管用户是否在线
+        System.out.println("📊 [WebSocket] 发送消息时更新未读统计: receiverId=" + receiverId + ", messageId=" + message.getId());
+        pushUnreadCount(receiverId);
+        pushUnreadMap(receiverId);
+        
+        // 检查用户在线状态，决定是否推送WebSocket消息
+        boolean userOnline = isUserOnline(receiverId);
+        if (!userOnline) {
+            System.out.println("📴 [WebSocket] 用户离线，跳过WebSocket推送（未读统计已更新）: receiverId=" + receiverId + ", messageId=" + message.getId());
             return;
         }
         
@@ -187,31 +198,20 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
             ", messageId=" + message.getId());
         
         // 推送消息到用户个人队列
-        messagingTemplate.convertAndSendToUser(
-                receiverId.toString(),
-                queueSuffix,
-                message);
-        
-        // 🆕 离线消息推送后不立即标记为已读，让用户真正看到后再标记
-        // 注释掉自动标记已读的逻辑，保持未读状态用于红点提示
-        /*
-        if ("OFFLINE".equals(message.getMessageType()) && message.getId() != null) {
-            try {
-                // 标记该条离线消息为已读
-                chatService.markMessagesAsRead(message.getSenderId(), receiverId);
-                System.out.println("📖 [Offline] 离线消息已标记为已读: messageId=" + message.getId());
-            } catch (Exception e) {
-                System.err.println("❌ [Offline] 标记离线消息为已读失败: " + e.getMessage());
-            }
+        try {
+            messagingTemplate.convertAndSendToUser(
+                    receiverId.toString(),
+                    queueSuffix,
+                    message);
+            System.out.println("✅ [WebSocket] 消息推送完成: receiverId=" + receiverId + 
+                ", messageId=" + message.getId() + 
+                ", senderId=" + message.getSenderId() + 
+                ", content=" + message.getContent() + 
+                ", messageType=" + message.getMessageType());
+        } catch (Exception e) {
+            System.err.println("❌ [WebSocket] 消息推送失败: receiverId=" + receiverId + 
+                ", messageId=" + message.getId() + ", error=" + e.getMessage());
         }
-        */
-        
-        // 推送未读统计更新
-        pushUnreadCount(receiverId);
-        pushUnreadMap(receiverId);
-        
-        System.out.println("✅ [WebSocket] 消息推送完成: receiverId=" + receiverId + 
-            ", messageType=" + message.getMessageType());
     }
 
     // 🆕 添加在线状态检查方法
@@ -240,7 +240,11 @@ public class ChatWebSocketServiceImpl implements ChatWebSocketService {
     // 监听消息推送事件
     @EventListener
     public void handleChatMessagePushEvent(ChatMessagePushEvent event) {
-        System.out.println("[WebSocket] 收到消息推送事件: receiverId=" + event.getReceiverId() + ", messageId=" + event.getMessage().getId());
+        System.out.println("🎯 [WebSocket] 收到消息推送事件: receiverId=" + event.getReceiverId() + 
+                          ", messageId=" + event.getMessage().getId() + 
+                          ", senderId=" + event.getMessage().getSenderId() + 
+                          ", content=" + event.getMessage().getContent() + 
+                          ", threadId=" + Thread.currentThread().getId());
         sendMessageToUser(event.getReceiverId(), event.getMessage());
     }
 

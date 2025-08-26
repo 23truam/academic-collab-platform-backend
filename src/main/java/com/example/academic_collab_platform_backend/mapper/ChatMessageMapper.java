@@ -47,30 +47,4 @@ public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
                            @Param("receiverId") Long receiverId);
 
     List<Map<String, Object>> getUnreadCountMap(Long currentUserId);
-    
-    // 🆕 第二阶段：离线消息查询
-    /**
-     * 查询用户离线期间收到的消息
-     */
-    List<ChatMessage> getOfflineMessages(@Param("userId") Long userId, 
-                                       @Param("lastLogoutTime") LocalDateTime lastLogoutTime,
-                                       @Param("limit") Integer limit);
-    
-    // 🆕 第三阶段：批量操作优化
-    /**
-     * 批量标记消息为已读
-     */
-    void batchMarkAsRead(@Param("userId") Long userId, @Param("messageIds") List<Long> messageIds);
-    
-    /**
-     * 批量查询消息
-     */
-    List<ChatMessage> selectBatchByIds(@Param("messageIds") List<Long> messageIds);
-    
-    /**
-     * 统计用户在指定时间段内的消息数量
-     */
-    Integer countMessagesByTimeRange(@Param("userId") Long userId,
-                                   @Param("startTime") LocalDateTime startTime,
-                                   @Param("endTime") LocalDateTime endTime);
 } 
